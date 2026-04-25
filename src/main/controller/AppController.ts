@@ -1,4 +1,4 @@
-import { app, screen, ipcMain } from 'electron'
+import { app, screen, ipcMain, globalShortcut } from 'electron'
 import { TaskbarMonitor } from '../platform/taskbar'
 import { FullscreenMonitor } from '../platform/fullscreen'
 import { AppTray } from '../platform/tray'
@@ -21,6 +21,7 @@ export class AppController {
   private lastTickTime = 0
   private lastZOrder: 'bruce-front' | 'jazz-front' | 'none' = 'none'
   private hiddenForFullscreen = false
+  private lastActiveChar: 'bruce' | 'jazz' = 'bruce'
 
   constructor() {
     this.taskbar = new TaskbarMonitor()
@@ -38,6 +39,7 @@ export class AppController {
     this.tray = new AppTray({
       onProviderChange: (char, provider) => this.onProviderChange(char, provider),
       onSizeChange: (char, size) => this.onSizeChange(char, size),
+      onWorkDirChange: (char, dir) => this.onWorkDirChange(char, dir),
       onHide: (char) => this.onHide(char),
       onThemeChange: (theme) => this.onThemeChange(theme),
       onCheckUpdates: () => this.updater.checkNow(),
@@ -77,6 +79,11 @@ export class AppController {
 
     this.updater.start()
 
+    const registered = globalShortcut.register('Ctrl+Shift+Space', () => {
+      const char = this.lastActiveChar === 'bruce' ? this.bruce : this.jazz
+      char?.togglePopover()
+    })
+    if (!registered) log.warn('Global shortcut Ctrl+Shift+Space could not be registered')
   }
 
   private setupIpc(): void {
@@ -93,6 +100,7 @@ export class AppController {
           this.jazz?.hideBubble()
           log.info('Onboarding complete')
         }
+        this.lastActiveChar = char === this.bruce ? 'bruce' : 'jazz'
         char.togglePopover()
       }
     })
@@ -111,6 +119,14 @@ export class AppController {
 
     ipcMain.on(IPC.SESSION_TERMINATE, event => {
       this.findCharByPopover(event.sender)?.terminateSession()
+    })
+
+    ipcMain.on(IPC.WALKER_SET_WORKDIR, (event, dirPath: string) => {
+      const char = this.findCharByWalker(event.sender)
+      if (char) {
+        char.setWorkDir(dirPath)
+        this.tray?.buildMenu()
+      }
     })
   }
 
@@ -171,6 +187,12 @@ export class AppController {
     }
   }
 
+  private onWorkDirChange(char: CharacterName, dir: string): void {
+    const walker = char === 'bruce' ? this.bruce : this.jazz
+    walker?.terminateSession()
+    log.info(`WorkDir: ${char} → ${dir}`)
+  }
+
   private onProviderChange(char: CharacterName, provider: AgentProvider): void {
     log.info(`Provider: ${char} → ${provider}`)
     // Session switching wired in Phase 6
@@ -204,6 +226,7 @@ export class AppController {
   }
 
   destroy(): void {
+    globalShortcut.unregisterAll()
     this.updater.stop()
     this.fullscreen.stop()
     this.tick.stop()

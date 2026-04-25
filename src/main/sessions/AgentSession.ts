@@ -4,7 +4,7 @@ export abstract class BaseSession extends EventEmitter {
   isRunning = false
   isBusy = false
 
-  abstract start(): Promise<void>
+  abstract start(cwd?: string, resumeId?: string): Promise<void>
   abstract send(message: string): void
   abstract terminate(): void
 }
@@ -16,6 +16,7 @@ export interface BaseSession {
   on(event: 'toolResult', listener: (summary: string, isError: boolean) => void): this
   on(event: 'turnComplete', listener: () => void): this
   on(event: 'ready', listener: () => void): this
+  on(event: 'sessionId', listener: (id: string) => void): this
   on(event: 'error', listener: (msg: string) => void): this
   on(event: 'exit', listener: () => void): this
   emit(event: 'text', chunk: string): boolean
@@ -23,6 +24,7 @@ export interface BaseSession {
   emit(event: 'toolResult', summary: string, isError: boolean): boolean
   emit(event: 'turnComplete'): boolean
   emit(event: 'ready'): boolean
+  emit(event: 'sessionId', id: string): boolean
   emit(event: 'error', msg: string): boolean
   emit(event: 'exit'): boolean
 }

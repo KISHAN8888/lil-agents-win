@@ -35,9 +35,17 @@ export type SessionEvent =
   | { type: 'turnComplete' }
   | { type: 'processExit' }
 
+export interface HistoryEntry {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 export interface CharacterConfig {
   provider: AgentProvider
   size: CharacterSize
+  workDir?: string
+  sessionId?: string
+  history: HistoryEntry[]
 }
 
 export interface AppStore {

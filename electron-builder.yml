@@ -8,6 +8,15 @@ files:
   - out/**/*
   - package.json
 
+extraResources:
+  - from: assets
+    to: assets
+    filter:
+      - "**/*.webm"
+      - "**/*.png"
+      - "**/*.mp3"
+      - "**/*.m4a"
+
 win:
   target:
     - target: nsis
@@ -15,7 +24,6 @@ win:
     - target: zip
       arch: [x64]
   icon: assets/icon_512x512.png
-  signingHashAlgorithms: [sha256]
 
 nsis:
   oneClick: false

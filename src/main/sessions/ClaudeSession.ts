@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process'
+import { homedir } from 'os'
 import { BaseSession } from './AgentSession'
 import { findBinary, needsShell } from '../platform/environment'
 import log from '../logger'
@@ -15,7 +16,7 @@ export class ClaudeSession extends BaseSession {
   private proc: ChildProcess | null = null
   private buf = ''
 
-  async start(): Promise<void> {
+  async start(cwd?: string, resumeId?: string): Promise<void> {
     const bin = await findBinary('claude')
     if (!bin) {
       this.emit('error', 'Claude CLI not found. Install via: https://claude.ai/download')
@@ -28,13 +29,16 @@ export class ClaudeSession extends BaseSession {
     delete env['CLAUDE_CODE_ENTRYPOINT']
     delete env['ELECTRON_RUN_AS_NODE']
 
-    log.info(`ClaudeSession spawning: ${bin}`)
+    const resolvedCwd = cwd ?? homedir()
+    const args = resumeId ? [...CLAUDE_ARGS, '--resume', resumeId] : CLAUDE_ARGS
+    log.info(`ClaudeSession spawning: ${bin} cwd=${resolvedCwd}${resumeId ? ` resume=${resumeId}` : ''}`)
 
-    this.proc = spawn(bin, CLAUDE_ARGS, {
+    this.proc = spawn(bin, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env,
       shell: needsShell(bin),
       windowsHide: true,
+      cwd: resolvedCwd,
     })
 
     this.isRunning = true
@@ -103,6 +107,7 @@ export class ClaudeSession extends BaseSession {
       case 'system': {
         if (m['subtype'] === 'init') {
           log.info('ClaudeSession ready')
+          if (typeof m['session_id'] === 'string') this.emit('sessionId', m['session_id'])
           this.emit('ready')
         }
         break

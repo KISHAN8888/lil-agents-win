@@ -1,5 +1,6 @@
-import { Tray, Menu, app, nativeImage } from 'electron'
+import { Tray, Menu, app, nativeImage, dialog } from 'electron'
 import { join } from 'path'
+import { homedir } from 'os'
 import store from '../store'
 import type { CharacterName, AgentProvider, CharacterSize, ThemeName } from '../../shared/types'
 import log from '../logger'
@@ -7,6 +8,7 @@ import log from '../logger'
 export interface TrayHandlers {
   onProviderChange: (char: CharacterName, provider: AgentProvider) => void
   onSizeChange: (char: CharacterName, size: CharacterSize) => void
+  onWorkDirChange: (char: CharacterName, dir: string) => void
   onHide: (char: CharacterName) => void
   onThemeChange: (theme: ThemeName) => void
   onCheckUpdates: () => void
@@ -43,6 +45,13 @@ export class AppTray {
     const jazzConfig = store.get('jazz')
     const theme = store.get('theme')
 
+    const shortDir = (dir: string | undefined): string => {
+      if (!dir) return 'not set'
+      const home = homedir()
+      const rel = dir.startsWith(home) ? '~' + dir.slice(home.length) : dir
+      return rel.length > 45 ? '...' + rel.slice(-42) : rel
+    }
+
     const charSubmenu = (
       char: CharacterName,
       provider: AgentProvider,
@@ -73,6 +82,21 @@ export class AppTray {
             this.buildMenu()
           },
         })),
+      },
+      {
+        label: `Folder: ${shortDir(store.get(char).workDir)}`,
+        click: async () => {
+          const { canceled, filePaths } = await dialog.showOpenDialog({
+            title: `Set ${char}'s working directory`,
+            properties: ['openDirectory'],
+            defaultPath: store.get(char).workDir ?? homedir(),
+          })
+          if (!canceled && filePaths[0]) {
+            store.set(char, { ...store.get(char), workDir: filePaths[0] })
+            this.handlers.onWorkDirChange(char, filePaths[0])
+            this.buildMenu()
+          }
+        },
       },
       { type: 'separator' },
       {

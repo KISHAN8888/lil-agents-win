@@ -2,10 +2,12 @@ export const IPC = {
   // Walker → Main
   WALKER_CLICKABLE: 'walker:clickable',
   WALKER_CLICK: 'walker:click',
+  WALKER_SET_WORKDIR: 'walker:setWorkDir',
 
   // Main → Walker
   WALKER_POSITION: 'walker:position',
   WALKER_FLIP: 'walker:flip',
+  WALKER_WALKING: 'walker:walking',
 
   // Session (bidirectional)
   SESSION_SEND: 'session:send',
@@ -15,6 +17,8 @@ export const IPC = {
   SESSION_TOOL_RESULT: 'session:toolResult',
   SESSION_TURN_COMPLETE: 'session:turnComplete',
   SESSION_READY: 'session:ready',
+  SESSION_HISTORY: 'session:history',
+  SESSION_CWD: 'session:cwd',
   SESSION_ERROR: 'session:error',
   SESSION_EXIT: 'session:exit',
 

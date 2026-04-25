@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import type { HistoryEntry } from '@shared/types'
 import { TitleBar } from './TitleBar'
 import { TerminalView, type TerminalHandle } from './TerminalView'
 import { InputBar } from './InputBar'
@@ -25,6 +26,8 @@ type PopoverAPI = {
   onError: (cb: (msg: string) => void) => void
   onExit: (cb: () => void) => void
   onThemeApply: (cb: (theme: string) => void) => void
+  onCwd: (cb: (cwd: string) => void) => void
+  onHistory: (cb: (entries: unknown[]) => void) => void
 }
 
 function getAPI(): PopoverAPI | undefined {
@@ -89,11 +92,26 @@ export default function PopoverApp() {
   useEffect(() => {
     const api = getAPI()
     if (!api) return
+    api.onHistory(entries => {
+      const history = entries as HistoryEntry[]
+      if (!history.length) return
+      termRef.current?.write('\x1b[2m── previous conversation ──\x1b[0m\r\n')
+      for (const e of history) {
+        if (e.role === 'user') {
+          termRef.current?.write(`\r\n\x1b[36m>\x1b[0m ${e.text}\r\n`)
+        } else {
+          termRef.current?.write(e.text + '\r\n')
+        }
+      }
+      termRef.current?.write('\x1b[2m───────────────────────────\x1b[0m\r\n\r\n')
+    })
     api.onReady(() => {
       if (!sessionConnected.current) {
         sessionConnected.current = true
-        termRef.current?.write('\x1b[2mSession ready\x1b[0m\r\n\r\n')
       }
+    })
+    api.onCwd(cwd => {
+      termRef.current?.write(`\x1b[2mWorking in: ${cwd}\x1b[0m\r\n\r\n`)
     })
     api.onText(chunk => {
       currentChunkRef.current += chunk

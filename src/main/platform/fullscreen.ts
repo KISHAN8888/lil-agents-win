@@ -38,7 +38,10 @@ function query(): boolean {
     const sw = Math.round(bounds.width * scaleFactor)
     const sh = Math.round(bounds.height * scaleFactor)
 
-    return rect.left <= 0 && rect.top <= 0 && rect.right >= sw && rect.bottom >= sh
+    // Maximized windows on Windows extend ~8px off-screen (DWM border trick).
+    // True fullscreen apps sit exactly at screen bounds. Use -4px tolerance to
+    // reject maximized windows while still catching genuine fullscreen apps.
+    return rect.left >= -4 && rect.top >= -4 && rect.right >= sw && rect.bottom >= sh
   } catch {
     return false
   }

@@ -107,6 +107,10 @@ export class WalkerCharacter {
   private thinkingPhraseIdx = 0
   private thinkingTimer: ReturnType<typeof setInterval> | null = null
   private completionTimer: ReturnType<typeof setTimeout> | null = null
+  private clickReady = false
+  private walkPaused = false
+  private pendingUserMessage: string | null = null
+  private currentResponseText = ''
   private positionProgress = 0.5 + (Math.random() - 0.5) * 0.4 // 0.3..0.7 start
   private direction: 1 | -1 = Math.random() < 0.5 ? 1 : -1
   private lastSentFlipped: boolean | null = null
@@ -155,12 +159,18 @@ export class WalkerCharacter {
         `${process.env['ELECTRON_RENDERER_URL']}/walker/index.html?char=${char}`
       )
     } else {
-      this.win.loadFile(join(__dirname, '../../renderer/walker/index.html'), {
+      this.win.loadFile(join(__dirname, '../renderer/walker/index.html'), {
         query: { char },
       })
     }
 
     log.info(`WalkerCharacter(${char}) window ${winW}x${winH} (charH=${charH}+bubble=${BUBBLE_H})`)
+
+    // Drain the "pressed since last call" low bit so a recent Enter/click
+    // (e.g. from running `npm run dev`) doesn't trigger a spurious popover
+    // on the very first tick before any human click has occurred.
+    GetAsyncKeyState(VK_LBUTTON)
+    setTimeout(() => { this.clickReady = true }, 500)
   }
 
   get popover(): BrowserWindow | null {
@@ -176,21 +186,24 @@ export class WalkerCharacter {
   tick(dt: number): void {
     if (!this.taskbar) return
 
-    if (this.state === 'idle') {
-      this.pauseMs -= dt
-      if (this.pauseMs <= 0) this.startWalk()
-    } else {
-      this.walkTimer += dt
-      const t = Math.min(this.walkTimer / this.walkDurationMs, 1)
-      this.positionProgress =
-        this.walkStartProgress + (this.walkEndProgress - this.walkStartProgress) * t
+    if (!this.walkPaused) {
+      if (this.state === 'idle') {
+        this.pauseMs -= dt
+        if (this.pauseMs <= 0) this.startWalk()
+      } else {
+        this.walkTimer += dt
+        const t = Math.min(this.walkTimer / this.walkDurationMs, 1)
+        this.positionProgress =
+          this.walkStartProgress + (this.walkEndProgress - this.walkStartProgress) * t
 
-      if (t >= 1) {
-        this.positionProgress = this.walkEndProgress
-        this.state = 'idle'
-        this.pauseMs = 500 + Math.random() * 1500
-        this.walkTimer = 0
-        log.debug(`WalkerCharacter(${this.params.name}) walk complete → idle`)
+        if (t >= 1) {
+          this.positionProgress = this.walkEndProgress
+          this.state = 'idle'
+          this.pauseMs = 500 + Math.random() * 1500
+          this.walkTimer = 0
+          if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, false)
+          log.debug(`WalkerCharacter(${this.params.name}) walk complete → idle`)
+        }
       }
     }
 
@@ -204,6 +217,7 @@ export class WalkerCharacter {
 
   /** Called every tick — detects hover and clicks natively via Win32. */
   updateClickState(): void {
+    if (!this.clickReady) return
     const cursor = screen.getCursorScreenPoint()
     const b = this.win.getBounds()
 
@@ -256,6 +270,11 @@ export class WalkerCharacter {
 
   onRendererReady(): void {
     this.rendererReady = true
+    const history = store.get(this.params.name).history ?? []
+    const wc = this.popoverWin?.webContents
+    if (history.length > 0 && wc && !wc.isDestroyed()) {
+      wc.send(IPC.SESSION_HISTORY, history)
+    }
     void this.startSession()
   }
 
@@ -265,6 +284,13 @@ export class WalkerCharacter {
 
   onWalkerReady(): void {
     this.walkerReady = true
+    if (!this.win.isDestroyed()) {
+      if (this.state === 'walking' && !this.walkPaused) {
+        this.win.webContents.send(IPC.WALKER_WALKING, true, this.params.accelStart)
+      } else {
+        this.win.webContents.send(IPC.WALKER_WALKING, false)
+      }
+    }
     if (this.pendingBubble !== null) {
       this.showBubble(this.pendingBubble)
       this.pendingBubble = null
@@ -291,6 +317,8 @@ export class WalkerCharacter {
 
   private startThinking(): void {
     this.stopThinking()
+    this.walkPaused = true
+    if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, false)
     this.thinkingActive = true
     this.thinkingPhraseIdx = 0
     this.showBubble(THINKING_PHRASES[0])
@@ -305,6 +333,10 @@ export class WalkerCharacter {
   private stopThinking(): void {
     if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
     this.thinkingActive = false
+    this.walkPaused = false
+    if (this.state === 'walking' && !this.win.isDestroyed()) {
+      this.win.webContents.send(IPC.WALKER_WALKING, true)
+    }
   }
 
   private showCompletion(): void {
@@ -325,6 +357,10 @@ export class WalkerCharacter {
     // prevents a second ClaudeSession from being created during that window.
     if (this.session !== null) return
 
+    const charConfig = store.get(this.params.name)
+    const resolvedCwd = charConfig.workDir
+    const resumeId = charConfig.sessionId
+    this.currentResponseText = ''
     this.session = new ClaudeSession()
 
     // Forward all session events to the popover renderer
@@ -333,9 +369,15 @@ export class WalkerCharacter {
       if (wc && !wc.isDestroyed()) wc.send(channel, ...args)
     }
 
+    this.session.on('sessionId', id => {
+      store.set(this.params.name, { ...store.get(this.params.name), sessionId: id })
+    })
     this.session.on('text', chunk => {
+      this.currentResponseText += chunk
       if (this.thinkingActive) {
-        this.stopThinking()
+        // Clear rotating bubble but keep walkPaused until the full turn completes
+        if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
+        this.thinkingActive = false
         this.hideBubble()
       }
       send(IPC.SESSION_TEXT, chunk)
@@ -343,28 +385,44 @@ export class WalkerCharacter {
     this.session.on('toolUse', (name, input) => send(IPC.SESSION_TOOL_USE, name, input))
     this.session.on('toolResult', (summary, isError) => send(IPC.SESSION_TOOL_RESULT, summary, isError))
     this.session.on('turnComplete', () => {
+      if (this.pendingUserMessage !== null) {
+        const cfg = store.get(this.params.name)
+        const updated = [...(cfg.history ?? []),
+          { role: 'user' as const, text: this.pendingUserMessage },
+          { role: 'assistant' as const, text: this.currentResponseText.trim() },
+        ].slice(-20) // keep last 10 pairs
+        store.set(this.params.name, { ...cfg, history: updated })
+        this.pendingUserMessage = null
+        this.currentResponseText = ''
+      }
       this.stopThinking()
       this.showCompletion()
       send(IPC.SESSION_TURN_COMPLETE)
     })
-    this.session.on('ready', () => send(IPC.SESSION_READY))
+    this.session.on('ready', () => {
+      send(IPC.SESSION_READY)
+      send(IPC.SESSION_CWD, resolvedCwd)
+    })
     this.session.on('error', msg => {
       this.stopThinking()
       this.hideBubble()
       send(IPC.SESSION_ERROR, msg)
       this.session = null
+      this.currentResponseText = ''
     })
     this.session.on('exit', () => {
       this.stopThinking()
       this.hideBubble()
       send(IPC.SESSION_EXIT)
       this.session = null
+      this.currentResponseText = ''
     })
 
-    await this.session.start()
+    await this.session.start(resolvedCwd, resumeId)
   }
 
   sendToSession(text: string): void {
+    this.pendingUserMessage = text
     if (this.session?.isRunning) {
       this.startThinking()
       this.session.send(text)
@@ -384,6 +442,15 @@ export class WalkerCharacter {
     this.hideBubble()
     this.session?.terminate()
     this.session = null
+  }
+
+  setWorkDir(dirPath: string): void {
+    store.set(this.params.name, { ...store.get(this.params.name), workDir: dirPath, sessionId: undefined, history: [] })
+    this.terminateSession()
+    const folderName = dirPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? dirPath
+    this.showBubble(`📁 ${folderName}`, 'complete')
+    setTimeout(() => this.hideBubble(), 2500)
+    log.info(`WorkDir: ${this.params.name} → ${dirPath}`)
   }
 
   toggleVisibility(): void {
@@ -448,7 +515,7 @@ export class WalkerCharacter {
         `${process.env['ELECTRON_RENDERER_URL']}/popover/index.html?char=${char}&provider=${provider}&theme=${theme}`
       )
     } else {
-      win.loadFile(join(__dirname, '../../renderer/popover/index.html'), {
+      win.loadFile(join(__dirname, '../renderer/popover/index.html'), {
         query: { char, provider, theme },
       })
     }
@@ -495,6 +562,7 @@ export class WalkerCharacter {
 
     this.state = 'walking'
     this.walkTimer = 0
+    if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, true, this.params.accelStart)
     log.debug(
       `WalkerCharacter(${this.params.name}) walk start ` +
         `progress=${this.positionProgress.toFixed(3)} → ${this.walkEndProgress.toFixed(3)} ` +

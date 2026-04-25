@@ -3,8 +3,8 @@ import type { AppStore } from '../shared/types'
 
 const store = new Store<AppStore>({
   defaults: {
-    bruce: { provider: 'claude', size: 'large' },
-    jazz: { provider: 'claude', size: 'large' },
+    bruce: { provider: 'claude', size: 'large', history: [] },
+    jazz: { provider: 'claude', size: 'large', history: [] },
     theme: 'midnight',
     hasCompletedOnboarding: false,
     soundEnabled: true,
