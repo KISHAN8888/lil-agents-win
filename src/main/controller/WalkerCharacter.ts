@@ -104,6 +104,7 @@ export class WalkerCharacter {
   private pendingBubble: string | null = null
   private session: ClaudeSession | null = null
   private thinkingActive = false
+  private toolBubbleActive = false
   private thinkingPhraseIdx = 0
   private thinkingTimer: ReturnType<typeof setInterval> | null = null
   private completionTimer: ReturnType<typeof setTimeout> | null = null
@@ -201,6 +202,8 @@ export class WalkerCharacter {
           this.state = 'idle'
           this.pauseMs = 500 + Math.random() * 1500
           this.walkTimer = 0
+          if (this.positionProgress <= 0) this.direction = 1
+          else if (this.positionProgress >= 1) this.direction = -1
           if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, false)
           log.debug(`WalkerCharacter(${this.params.name}) walk complete → idle`)
         }
@@ -333,9 +336,10 @@ export class WalkerCharacter {
   private stopThinking(): void {
     if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
     this.thinkingActive = false
+    this.toolBubbleActive = false
     this.walkPaused = false
     if (this.state === 'walking' && !this.win.isDestroyed()) {
-      this.win.webContents.send(IPC.WALKER_WALKING, true)
+      this.win.webContents.send(IPC.WALKER_WALKING, true, this.params.accelStart)
     }
   }
 
@@ -374,15 +378,22 @@ export class WalkerCharacter {
     })
     this.session.on('text', chunk => {
       this.currentResponseText += chunk
-      if (this.thinkingActive) {
-        // Clear rotating bubble but keep walkPaused until the full turn completes
+      if (this.thinkingActive || this.toolBubbleActive) {
         if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
         this.thinkingActive = false
+        this.toolBubbleActive = false
         this.hideBubble()
       }
       send(IPC.SESSION_TEXT, chunk)
     })
-    this.session.on('toolUse', (name, input) => send(IPC.SESSION_TOOL_USE, name, input))
+    this.session.on('toolUse', (name, input) => {
+      if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
+      this.thinkingActive = false
+      this.toolBubbleActive = true
+      const label = name.length > 10 ? name.slice(0, 9) + '…' : name
+      this.showBubble(`[${label}…]`)
+      send(IPC.SESSION_TOOL_USE, name, input)
+    })
     this.session.on('toolResult', (summary, isError) => send(IPC.SESSION_TOOL_RESULT, summary, isError))
     this.session.on('turnComplete', () => {
       if (this.pendingUserMessage !== null) {
@@ -549,16 +560,7 @@ export class WalkerCharacter {
 
     this.walkStartProgress = this.positionProgress
     const tentative = this.positionProgress + this.direction * walkFraction
-
-    if (tentative <= 0) {
-      this.walkEndProgress = 0
-      this.direction = 1
-    } else if (tentative >= 1) {
-      this.walkEndProgress = 1
-      this.direction = -1
-    } else {
-      this.walkEndProgress = Math.max(0, Math.min(1, tentative))
-    }
+    this.walkEndProgress = Math.max(0, Math.min(1, tentative))
 
     this.state = 'walking'
     this.walkTimer = 0

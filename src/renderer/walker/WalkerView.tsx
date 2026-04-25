@@ -50,6 +50,7 @@ export default function WalkerView() {
         v.play().catch(() => {})
       } else {
         v.pause()
+        v.currentTime = 0
       }
     })
     api.onBubbleShow((text, variant) => setBubble({ text, variant }))
