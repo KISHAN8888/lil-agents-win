@@ -1,0 +1,29 @@
+appId: xyz.lilagents.win
+productName: lil agents
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - out/**/*
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  icon: assets/app.ico
+  signingHashAlgorithms: [sha256]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+
+publish:
+  provider: github
+  owner: KISHAN8888
+  repo: lil-agents-win

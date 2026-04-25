@@ -1,0 +1,199 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---- Theme palettes ---- */
+
+:root,
+[data-theme="midnight"] {
+  --bg: #1a1a2e;
+  --fg: #e0e0e0;
+  --accent: #7f7fd5;
+  --surface: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.08);
+  --suggestions-bg: #12122a;
+  --hover: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="peach"] {
+  --bg: #1e1208;
+  --fg: #f0d0b0;
+  --accent: #e8956d;
+  --surface: rgba(232, 149, 109, 0.06);
+  --border: rgba(232, 149, 109, 0.18);
+  --suggestions-bg: #160e06;
+  --hover: rgba(232, 149, 109, 0.09);
+}
+
+[data-theme="cloud"] {
+  --bg: #f5f7fa;
+  --fg: #2d3748;
+  --accent: #4a90d9;
+  --surface: rgba(0, 0, 0, 0.03);
+  --border: rgba(0, 0, 0, 0.09);
+  --suggestions-bg: #e8eef4;
+  --hover: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="moss"] {
+  --bg: #0d1f17;
+  --fg: #d4e8d4;
+  --accent: #4caf82;
+  --surface: rgba(76, 175, 130, 0.05);
+  --border: rgba(76, 175, 130, 0.18);
+  --suggestions-bg: #091510;
+  --hover: rgba(76, 175, 130, 0.09);
+}
+
+/* ---- Shell ---- */
+
+.popover-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'JetBrains Mono', monospace;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* ---- Title bar ---- */
+
+.title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 36px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.title-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-bar-provider {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--fg);
+  opacity: 0.9;
+}
+
+.title-bar-char {
+  font-size: 11px;
+  color: var(--fg);
+  opacity: 0.4;
+}
+
+.title-bar-close {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  color: var(--fg);
+  opacity: 0.4;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.title-bar-close:hover {
+  opacity: 1;
+  background: var(--hover);
+}
+
+/* ---- Terminal ---- */
+
+.terminal-container {
+  flex: 1;
+  overflow: hidden;
+  padding: 8px 4px 4px;
+}
+
+.terminal-container .xterm {
+  height: 100%;
+}
+
+.terminal-container .xterm-viewport {
+  border-radius: 0;
+}
+
+/* ---- Input bar ---- */
+
+.input-bar {
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.input-field {
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  caret-color: var(--accent);
+}
+
+.input-field::placeholder {
+  color: var(--fg);
+  opacity: 0.3;
+}
+
+/* ---- Slash command suggestions ---- */
+
+.suggestions {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--suggestions-bg);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  overflow: hidden;
+}
+
+.suggestion {
+  padding: 7px 14px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--fg);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: background 0.08s, opacity 0.08s;
+}
+
+.suggestion:hover,
+.suggestion.selected {
+  background: var(--hover);
+  opacity: 1;
+}
