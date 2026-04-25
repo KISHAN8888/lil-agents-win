@@ -41,8 +41,8 @@ export class AppTray {
   }
 
   buildMenu(): void {
-    const bruceConfig = store.get('bruce')
-    const jazzConfig = store.get('jazz')
+    const tucoConfig = store.get('tuco')
+    const kimConfig = store.get('kim')
     const theme = store.get('theme')
 
     const shortDir = (dir: string | undefined): string => {
@@ -107,12 +107,12 @@ export class AppTray {
 
     const menu = Menu.buildFromTemplate([
       {
-        label: 'Bruce',
-        submenu: charSubmenu('bruce', bruceConfig.provider, bruceConfig.size),
+        label: 'Tuco',
+        submenu: charSubmenu('tuco', tucoConfig.provider, tucoConfig.size),
       },
       {
-        label: 'Jazz',
-        submenu: charSubmenu('jazz', jazzConfig.provider, jazzConfig.size),
+        label: 'Kim',
+        submenu: charSubmenu('kim', kimConfig.provider, kimConfig.size),
       },
       { type: 'separator' },
       {

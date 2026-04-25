@@ -8,7 +8,7 @@ export type AgentProvider =
 
 export type CharacterSize = 'small' | 'medium' | 'large'
 
-export type CharacterName = 'bruce' | 'jazz'
+export type CharacterName = 'tuco' | 'kim'
 
 export type ThemeName = 'midnight' | 'peach' | 'cloud' | 'moss'
 
@@ -49,8 +49,8 @@ export interface CharacterConfig {
 }
 
 export interface AppStore {
-  bruce: CharacterConfig
-  jazz: CharacterConfig
+  tuco: CharacterConfig
+  kim: CharacterConfig
   theme: ThemeName
   hasCompletedOnboarding: boolean
   soundEnabled: boolean

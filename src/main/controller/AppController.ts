@@ -11,17 +11,17 @@ import log from '../logger'
 import type { CharacterName, AgentProvider, CharacterSize, ThemeName } from '../../shared/types'
 
 export class AppController {
-  private bruce: WalkerCharacter | null = null
-  private jazz: WalkerCharacter | null = null
+  private tuco: WalkerCharacter | null = null
+  private kim: WalkerCharacter | null = null
   private tray: AppTray | null = null
   private readonly taskbar: TaskbarMonitor
   private readonly fullscreen: FullscreenMonitor
   private readonly updater: AppUpdater
   private readonly tick: TickLoop
   private lastTickTime = 0
-  private lastZOrder: 'bruce-front' | 'jazz-front' | 'none' = 'none'
+  private lastZOrder: 'tuco-front' | 'kim-front' | 'none' = 'none'
   private hiddenForFullscreen = false
-  private lastActiveChar: 'bruce' | 'jazz' = 'bruce'
+  private lastActiveChar: 'tuco' | 'kim' = 'tuco'
 
   constructor() {
     this.taskbar = new TaskbarMonitor()
@@ -33,8 +33,8 @@ export class AppController {
   init(): void {
     this.logDisplayInfo()
 
-    this.bruce = new WalkerCharacter('bruce')
-    this.jazz = new WalkerCharacter('jazz')
+    this.tuco = new WalkerCharacter('tuco')
+    this.kim = new WalkerCharacter('kim')
 
     this.tray = new AppTray({
       onProviderChange: (char, provider) => this.onProviderChange(char, provider),
@@ -52,8 +52,8 @@ export class AppController {
     this.setupIpc()
 
     this.taskbar.on('change', geometry => {
-      this.bruce?.updateTaskbar(geometry)
-      this.jazz?.updateTaskbar(geometry)
+      this.tuco?.updateTaskbar(geometry)
+      this.kim?.updateTaskbar(geometry)
     })
     this.taskbar.start()
 
@@ -63,10 +63,10 @@ export class AppController {
       const dt = this.lastTickTime === 0 ? 16 : now - this.lastTickTime
       this.lastTickTime = now
       const clampedDt = Math.min(dt, 100)
-      this.bruce?.tick(clampedDt)
-      this.jazz?.tick(clampedDt)
-      this.bruce?.updateClickState()
-      this.jazz?.updateClickState()
+      this.tuco?.tick(clampedDt)
+      this.kim?.tick(clampedDt)
+      this.tuco?.updateClickState()
+      this.kim?.updateClickState()
       this.syncZOrder()
     }
 
@@ -74,13 +74,13 @@ export class AppController {
     this.tick.start()
 
     if (!app.isPackaged) {
-      this.bruce.win.webContents.openDevTools({ mode: 'detach' })
+      this.tuco.win.webContents.openDevTools({ mode: 'detach' })
     }
 
     this.updater.start()
 
     const registered = globalShortcut.register('Ctrl+Shift+Space', () => {
-      const char = this.lastActiveChar === 'bruce' ? this.bruce : this.jazz
+      const char = this.lastActiveChar === 'tuco' ? this.tuco : this.kim
       char?.togglePopover()
     })
     if (!registered) log.warn('Global shortcut Ctrl+Shift+Space could not be registered')
@@ -96,11 +96,11 @@ export class AppController {
       if (char) {
         if (!store.get('hasCompletedOnboarding')) {
           store.set('hasCompletedOnboarding', true)
-          this.bruce?.hideBubble()
-          this.jazz?.hideBubble()
+          this.tuco?.hideBubble()
+          this.kim?.hideBubble()
           log.info('Onboarding complete')
         }
-        this.lastActiveChar = char === this.bruce ? 'bruce' : 'jazz'
+        this.lastActiveChar = char === this.tuco ? 'tuco' : 'kim'
         char.togglePopover()
       }
     })
@@ -131,26 +131,26 @@ export class AppController {
   }
 
   private findCharByWalker(sender: Electron.WebContents): WalkerCharacter | null {
-    if (sender === this.bruce?.win.webContents) return this.bruce
-    if (sender === this.jazz?.win.webContents) return this.jazz
+    if (sender === this.tuco?.win.webContents) return this.tuco
+    if (sender === this.kim?.win.webContents) return this.kim
     return null
   }
 
   private findCharByPopover(sender: Electron.WebContents): WalkerCharacter | null {
-    if (sender === this.bruce?.popover?.webContents) return this.bruce
-    if (sender === this.jazz?.popover?.webContents) return this.jazz
+    if (sender === this.tuco?.popover?.webContents) return this.tuco
+    if (sender === this.kim?.popover?.webContents) return this.kim
     return null
   }
 
   private syncZOrder(): void {
-    if (!this.bruce?.isVisible || !this.jazz?.isVisible) return
+    if (!this.tuco?.isVisible || !this.kim?.isVisible) return
 
-    const bruceBounds = this.bruce.win.getBounds()
-    const jazzBounds = this.jazz.win.getBounds()
+    const tucoBounds = this.tuco.win.getBounds()
+    const kimBounds = this.kim.win.getBounds()
 
     const overlapping =
-      bruceBounds.x < jazzBounds.x + jazzBounds.width &&
-      bruceBounds.x + bruceBounds.width > jazzBounds.x
+      tucoBounds.x < kimBounds.x + kimBounds.width &&
+      tucoBounds.x + tucoBounds.width > kimBounds.x
 
     if (!overlapping) {
       if (this.lastZOrder !== 'none') this.lastZOrder = 'none'
@@ -158,37 +158,37 @@ export class AppController {
     }
 
     // Right character sits in front of left character
-    const desired: 'bruce-front' | 'jazz-front' =
-      bruceBounds.x >= jazzBounds.x ? 'bruce-front' : 'jazz-front'
+    const desired: 'tuco-front' | 'kim-front' =
+      tucoBounds.x >= kimBounds.x ? 'tuco-front' : 'kim-front'
 
     if (desired === this.lastZOrder) return
     this.lastZOrder = desired
 
-    if (desired === 'bruce-front') {
-      this.jazz.win.moveTop()
-      this.bruce.win.moveTop()
+    if (desired === 'tuco-front') {
+      this.kim.win.moveTop()
+      this.tuco.win.moveTop()
     } else {
-      this.bruce.win.moveTop()
-      this.jazz.win.moveTop()
+      this.tuco.win.moveTop()
+      this.kim.win.moveTop()
     }
   }
 
   private onFullscreenChange(isFullscreen: boolean): void {
     if (isFullscreen && !this.hiddenForFullscreen) {
       this.hiddenForFullscreen = true
-      this.bruce?.win.hide()
-      this.jazz?.win.hide()
-      this.bruce?.hidePopover()
-      this.jazz?.hidePopover()
+      this.tuco?.win.hide()
+      this.kim?.win.hide()
+      this.tuco?.hidePopover()
+      this.kim?.hidePopover()
     } else if (!isFullscreen && this.hiddenForFullscreen) {
       this.hiddenForFullscreen = false
-      if (this.bruce?.isVisible) this.bruce.win.show()
-      if (this.jazz?.isVisible) this.jazz.win.show()
+      if (this.tuco?.isVisible) this.tuco.win.show()
+      if (this.kim?.isVisible) this.kim.win.show()
     }
   }
 
   private onWorkDirChange(char: CharacterName, dir: string): void {
-    const walker = char === 'bruce' ? this.bruce : this.jazz
+    const walker = char === 'tuco' ? this.tuco : this.kim
     walker?.terminateSession()
     log.info(`WorkDir: ${char} → ${dir}`)
   }
@@ -199,19 +199,19 @@ export class AppController {
   }
 
   private onSizeChange(char: CharacterName, size: CharacterSize): void {
-    const walker = char === 'bruce' ? this.bruce : this.jazz
+    const walker = char === 'tuco' ? this.tuco : this.kim
     walker?.applySize(size)
   }
 
   private onHide(char: CharacterName): void {
-    const walker = char === 'bruce' ? this.bruce : this.jazz
+    const walker = char === 'tuco' ? this.tuco : this.kim
     walker?.toggleVisibility()
   }
 
   private onThemeChange(theme: ThemeName): void {
     store.set('theme', theme)
-    this.bruce?.applyTheme(theme)
-    this.jazz?.applyTheme(theme)
+    this.tuco?.applyTheme(theme)
+    this.kim?.applyTheme(theme)
     log.info(`Theme → ${theme}`)
   }
 
@@ -232,9 +232,9 @@ export class AppController {
     this.tick.stop()
     this.taskbar.stop()
     this.tray?.destroy()
-    this.bruce?.destroy()
-    this.jazz?.destroy()
-    this.bruce = null
-    this.jazz = null
+    this.tuco?.destroy()
+    this.kim?.destroy()
+    this.tuco = null
+    this.kim = null
   }
 }

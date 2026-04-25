@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 
 const VIDEO_MAP: Record<string, string> = {
-  bruce: 'asset://walk-bruce-01.webm',
-  jazz: 'asset://walk-jazz-01.webm',
+  tuco: 'asset://Walking monkey.webm',
+  kim: 'asset://walk.webm',
 }
 
 const FALLBACK_MAP: Record<string, string> = {
-  bruce: 'asset://walk-bruce-01.png',
-  jazz: 'asset://walk-jazz-01.png',
+  tuco: 'asset://Walking monkey.webm',
+  kim: 'asset://walk.webm',
 }
 
 function getCharacter(): string {
-  return new URLSearchParams(location.search).get('char') ?? 'bruce'
+  return new URLSearchParams(location.search).get('char') ?? 'tuco'
 }
 
 type WalkerAPI = {
@@ -34,8 +34,8 @@ export default function WalkerView() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const walkingRef = useRef(false)
   const char = getCharacter()
-  const videoSrc = VIDEO_MAP[char] ?? VIDEO_MAP.bruce
-  const fallbackSrc = FALLBACK_MAP[char] ?? FALLBACK_MAP.bruce
+  const videoSrc = VIDEO_MAP[char] ?? VIDEO_MAP.tuco
+  const fallbackSrc = FALLBACK_MAP[char] ?? FALLBACK_MAP.tuco
 
   useEffect(() => {
     const api = (window as Window & { walkerAPI?: WalkerAPI }).walkerAPI
@@ -60,7 +60,7 @@ export default function WalkerView() {
       audio.play().catch(() => {})
     })
     api.signalReady()
-  }, [])
+  }, [char])
 
   const getAPI = () => (window as Window & { walkerAPI?: WalkerAPI }).walkerAPI
 
@@ -144,7 +144,11 @@ export default function WalkerView() {
           preload="auto"
           onCanPlay={v => {
             if (walkingRef.current) (v.target as HTMLVideoElement).play().catch(() => {})
-            else (v.target as HTMLVideoElement).pause()
+            else {
+              const el = v.target as HTMLVideoElement
+              el.pause()
+              el.currentTime = 0
+            }
           }}
           onError={() => setVideoFailed(true)}
           style={mediaStyle}

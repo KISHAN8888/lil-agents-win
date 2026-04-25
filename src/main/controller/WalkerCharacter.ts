@@ -28,33 +28,33 @@ interface CharacterParams {
   yOffset: number
 }
 
-const BRUCE_PARAMS: CharacterParams = {
-  name: 'bruce',
-  videoFile: 'walk-bruce-01.webm',
-  videoDurationSec: 10.0,
-  accelStart: 3.0,
-  fullSpeedStart: 3.75,
+const TUCO_PARAMS: CharacterParams = {
+  name: 'tuco',
+  videoFile: 'Walking monkey.webm',
+  videoDurationSec: 1.0,
+  accelStart: 0,
+  fullSpeedStart: 0,
   decelStart: 8.0,
-  walkStop: 8.5,
-  walkAmountRange: [0.4, 0.65],
+  walkStop: 8.0,
+  walkAmountRange: [0.2, 0.4],
   yOffset: 25,
 }
 
-const JAZZ_PARAMS: CharacterParams = {
-  name: 'jazz',
-  videoFile: 'walk-jazz-01.webm',
-  videoDurationSec: 10.0,
-  accelStart: 3.9,
-  fullSpeedStart: 4.5,
+const KIM_PARAMS: CharacterParams = {
+  name: 'kim',
+  videoFile: 'walk.webm',
+  videoDurationSec: 1.0,
+  accelStart: 0,
+  fullSpeedStart: 0,
   decelStart: 8.0,
-  walkStop: 8.75,
-  walkAmountRange: [0.35, 0.6],
+  walkStop: 8.0,
+  walkAmountRange: [0.2, 0.4],
   yOffset: 25,
 }
 
 export const CHARACTER_PARAMS: Record<CharacterName, CharacterParams> = {
-  bruce: BRUCE_PARAMS,
-  jazz: JAZZ_PARAMS,
+  tuco: TUCO_PARAMS,
+  kim: KIM_PARAMS,
 }
 
 // ---- size constants ----
@@ -82,8 +82,9 @@ function randomInRange([lo, hi]: [number, number]): number {
   return lo + Math.random() * (hi - lo)
 }
 
-function charToWindow(charH: number): { winW: number; winH: number } {
-  return { winW: Math.round(charH * (9 / 16)), winH: charH + BUBBLE_H }
+function charToWindow(charH: number, charName: CharacterName): { winW: number; winH: number } {
+  const winW = charH
+  return { winW, winH: charH + BUBBLE_H }
 }
 
 // ---- walk state machine ----
@@ -131,7 +132,7 @@ export class WalkerCharacter {
     this.params = CHARACTER_PARAMS[name]
     const size = store.get(`${name}.size`, 'large') as string
     const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
-    const { winW, winH } = charToWindow(charH)
+    const { winW, winH } = charToWindow(charH, name)
 
     this.win = new BrowserWindow({
       width: winW,
@@ -476,7 +477,7 @@ export class WalkerCharacter {
 
   applySize(size: CharacterSize): void {
     const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
-    const { winW, winH } = charToWindow(charH)
+    const { winW, winH } = charToWindow(charH, this.params.name)
     this.win.setSize(winW, winH)
     log.info(`WalkerCharacter(${this.params.name}) size → ${size} (${winW}x${winH})`)
   }
@@ -586,7 +587,7 @@ export class WalkerCharacter {
 
     const size = store.get(`${this.params.name}.size`, 'large') as string
     const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
-    const { winW, winH } = charToWindow(charH)
+    const { winW, winH } = charToWindow(charH, this.params.name)
 
     // positionProgress (0..1) maps to horizontal offset within taskbar
     const maxOffset = Math.max(0, rect.w - winW)

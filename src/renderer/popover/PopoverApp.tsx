@@ -7,7 +7,7 @@ import { InputBar } from './InputBar'
 function getParams() {
   const p = new URLSearchParams(location.search)
   return {
-    char: p.get('char') ?? 'bruce',
+    char: p.get('char') ?? 'tuco',
     provider: p.get('provider') ?? 'claude',
     theme: p.get('theme') ?? 'midnight',
   }
