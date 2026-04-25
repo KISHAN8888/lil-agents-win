@@ -64,7 +64,6 @@ export class AppTray {
           type: 'radio' as const,
           checked: p === provider,
           click: () => {
-            store.set(char, { ...store.get(char), provider: p })
             this.handlers.onProviderChange(char, p)
             this.buildMenu()
           },

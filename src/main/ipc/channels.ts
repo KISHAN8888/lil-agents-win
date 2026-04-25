@@ -17,6 +17,7 @@ export const IPC = {
   SESSION_TOOL_RESULT: 'session:toolResult',
   SESSION_TURN_COMPLETE: 'session:turnComplete',
   SESSION_READY: 'session:ready',
+  SESSION_PROVIDER: 'session:provider',
   SESSION_HISTORY: 'session:history',
   SESSION_CWD: 'session:cwd',
   SESSION_ERROR: 'session:error',

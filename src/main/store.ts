@@ -3,8 +3,8 @@ import type { AppStore } from '../shared/types'
 
 const store = new Store<AppStore>({
   defaults: {
-    tuco: { provider: 'claude', size: 'large', history: [] },
-    kim: { provider: 'claude', size: 'large', history: [] },
+    tuco: { provider: 'claude', size: 'large', sessions: {} },
+    kim: { provider: 'claude', size: 'large', sessions: {} },
     theme: 'midnight',
     hasCompletedOnboarding: false,
     soundEnabled: true,

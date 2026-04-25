@@ -15,6 +15,7 @@ let _onExit: (() => void) | null = null
 let _onThemeApply: ((theme: string) => void) | null = null
 let _onCwd: ((cwd: string) => void) | null = null
 let _onHistory: ((entries: unknown[]) => void) | null = null
+let _onProvider: ((provider: string) => void) | null = null
 
 ipcRenderer.on(IPC.SESSION_TEXT, (_e, chunk: string) => _onText?.(chunk))
 ipcRenderer.on(IPC.SESSION_TOOL_USE, (_e, name: string, input: unknown) => _onToolUse?.(name, input))
@@ -26,6 +27,7 @@ ipcRenderer.on(IPC.SESSION_EXIT, () => _onExit?.())
 ipcRenderer.on(IPC.THEME_APPLY, (_e, theme: string) => _onThemeApply?.(theme))
 ipcRenderer.on(IPC.SESSION_CWD, (_e, cwd: string) => _onCwd?.(cwd))
 ipcRenderer.on(IPC.SESSION_HISTORY, (_e, entries: unknown[]) => _onHistory?.(entries))
+ipcRenderer.on(IPC.SESSION_PROVIDER, (_e, provider: string) => _onProvider?.(provider))
 
 contextBridge.exposeInMainWorld('popoverAPI', {
   signalReady: () => ipcRenderer.send(IPC.POPOVER_READY),
@@ -45,4 +47,5 @@ contextBridge.exposeInMainWorld('popoverAPI', {
   onThemeApply: (cb: (theme: string) => void) => { _onThemeApply = cb },
   onCwd: (cb: (cwd: string) => void) => { _onCwd = cb },
   onHistory: (cb: (entries: unknown[]) => void) => { _onHistory = cb },
+  onProvider: (cb: (provider: string) => void) => { _onProvider = cb },
 })

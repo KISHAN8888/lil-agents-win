@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { HistoryEntry } from '@shared/types'
 import { TitleBar } from './TitleBar'
 import { TerminalView, type TerminalHandle } from './TerminalView'
@@ -28,6 +28,7 @@ type PopoverAPI = {
   onThemeApply: (cb: (theme: string) => void) => void
   onCwd: (cb: (cwd: string) => void) => void
   onHistory: (cb: (entries: unknown[]) => void) => void
+  onProvider: (cb: (provider: string) => void) => void
 }
 
 function getAPI(): PopoverAPI | undefined {
@@ -40,7 +41,8 @@ function applyTheme(name: string) {
 
 
 export default function PopoverApp() {
-  const { char, provider, theme: initialTheme } = getParams()
+  const { char, provider: initialProvider, theme: initialTheme } = getParams()
+  const [provider, setProvider] = useState(initialProvider)
   const termRef = useRef<TerminalHandle>(null)
   const sessionConnected = useRef(false)
   const lastResponseRef = useRef('')
@@ -131,6 +133,10 @@ export default function PopoverApp() {
     api.onThemeApply(name => {
       applyTheme(name)
       termRef.current?.setTheme(name)
+    })
+    api.onProvider(p => {
+      setProvider(p as any)
+      termRef.current?.write(`\r\n\x1b[2mSwitching to ${p.toUpperCase()}... \x1b[0m\r\n`)
     })
     // All listeners registered — tell main process it's safe to start the session
     api.signalReady()

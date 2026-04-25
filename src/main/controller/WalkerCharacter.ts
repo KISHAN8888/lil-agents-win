@@ -2,10 +2,11 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import koffi from 'koffi'
 import { IPC } from '../ipc/channels'
-import { ClaudeSession } from '../sessions/ClaudeSession'
+import { BaseSession } from '../sessions/AgentSession'
+import { createSession } from '../sessions/SessionFactory'
 import store from '../store'
 import log from '../logger'
-import type { TaskbarGeometry, CharacterName, CharacterSize, ThemeName } from '../../shared/types'
+import type { TaskbarGeometry, CharacterName, CharacterSize, ThemeName, AgentProvider } from '../../shared/types'
 
 // Detect mouse button clicks natively — the only reliable approach when
 // the walker window has focusable:false (WS_EX_NOACTIVATE), which causes
@@ -103,7 +104,7 @@ export class WalkerCharacter {
   private rendererReady = false
   private walkerReady = false
   private pendingBubble: string | null = null
-  private session: ClaudeSession | null = null
+  private session: BaseSession | null = null
   private thinkingActive = false
   private toolBubbleActive = false
   private thinkingPhraseIdx = 0
@@ -274,7 +275,9 @@ export class WalkerCharacter {
 
   onRendererReady(): void {
     this.rendererReady = true
-    const history = store.get(this.params.name).history ?? []
+    const cfg = store.get(this.params.name)
+    const sessions = cfg.sessions ?? {}
+    const history = sessions[cfg.provider]?.history ?? []
     const wc = this.popoverWin?.webContents
     if (history.length > 0 && wc && !wc.isDestroyed()) {
       wc.send(IPC.SESSION_HISTORY, history)
@@ -359,14 +362,16 @@ export class WalkerCharacter {
   async startSession(): Promise<void> {
     // Guard on non-null: session is either already running or still starting.
     // StrictMode double-invokes effects → POPOVER_READY fires twice; this
-    // prevents a second ClaudeSession from being created during that window.
+    // prevents a second session from being created during that window.
     if (this.session !== null) return
 
     const charConfig = store.get(this.params.name)
+    const provider = charConfig.provider
     const resolvedCwd = charConfig.workDir
-    const resumeId = charConfig.sessionId
+    const sessions = charConfig.sessions ?? {}
+    const resumeId = sessions[provider]?.sessionId
     this.currentResponseText = ''
-    this.session = new ClaudeSession()
+    this.session = createSession(provider)
 
     // Forward all session events to the popover renderer
     const send = (channel: string, ...args: unknown[]) => {
@@ -375,7 +380,11 @@ export class WalkerCharacter {
     }
 
     this.session.on('sessionId', id => {
-      store.set(this.params.name, { ...store.get(this.params.name), sessionId: id })
+      const cfg = store.get(this.params.name)
+      const currentProvider = cfg.provider
+      const sessions = { ...cfg.sessions }
+      sessions[currentProvider] = { ...sessions[currentProvider], sessionId: id, history: sessions[currentProvider]?.history ?? [] }
+      store.set(this.params.name, { ...cfg, sessions })
     })
     this.session.on('text', chunk => {
       this.currentResponseText += chunk
@@ -399,11 +408,17 @@ export class WalkerCharacter {
     this.session.on('turnComplete', () => {
       if (this.pendingUserMessage !== null) {
         const cfg = store.get(this.params.name)
-        const updated = [...(cfg.history ?? []),
+        const provider = cfg.provider
+        const sessions = { ...cfg.sessions }
+        const providerSession = sessions[provider] ?? { history: [] }
+        const updatedHistory = [...(providerSession.history ?? []),
           { role: 'user' as const, text: this.pendingUserMessage },
           { role: 'assistant' as const, text: this.currentResponseText.trim() },
         ].slice(-20) // keep last 10 pairs
-        store.set(this.params.name, { ...cfg, history: updated })
+        
+        sessions[provider] = { ...providerSession, history: updatedHistory }
+        store.set(this.params.name, { ...cfg, sessions })
+        
         this.pendingUserMessage = null
         this.currentResponseText = ''
       }
@@ -457,12 +472,32 @@ export class WalkerCharacter {
   }
 
   setWorkDir(dirPath: string): void {
-    store.set(this.params.name, { ...store.get(this.params.name), workDir: dirPath, sessionId: undefined, history: [] })
+    const cfg = store.get(this.params.name)
+    store.set(this.params.name, { ...cfg, workDir: dirPath, sessions: {} })
     this.terminateSession()
     const folderName = dirPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? dirPath
     this.showBubble(`📁 ${folderName}`, 'complete')
     setTimeout(() => this.hideBubble(), 2500)
     log.info(`WorkDir: ${this.params.name} → ${dirPath}`)
+  }
+
+  applyProvider(provider: AgentProvider): void {
+    const cfg = store.get(this.params.name)
+    if (cfg.provider === provider) return
+    store.set(this.params.name, { ...cfg, provider })
+    this.terminateSession()
+    
+    // Update popover UI if it's open
+    const wc = this.popoverWin?.webContents
+    if (wc && !wc.isDestroyed()) {
+      wc.send(IPC.SESSION_PROVIDER, provider)
+      // Also send history for new provider
+      const sessions = cfg.sessions ?? {}
+      const history = sessions[provider]?.history ?? []
+      wc.send(IPC.SESSION_HISTORY, history)
+    }
+
+    log.info(`WalkerCharacter(${this.params.name}) provider → ${provider}`)
   }
 
   toggleVisibility(): void {

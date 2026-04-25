@@ -44,8 +44,10 @@ export interface CharacterConfig {
   provider: AgentProvider
   size: CharacterSize
   workDir?: string
-  sessionId?: string
-  history: HistoryEntry[]
+  sessions: Partial<Record<AgentProvider, {
+    sessionId?: string
+    history: HistoryEntry[]
+  }>>
 }
 
 export interface AppStore {

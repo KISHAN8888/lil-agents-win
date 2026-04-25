@@ -194,8 +194,9 @@ export class AppController {
   }
 
   private onProviderChange(char: CharacterName, provider: AgentProvider): void {
+    const walker = char === 'tuco' ? this.tuco : this.kim
+    walker?.applyProvider(provider)
     log.info(`Provider: ${char} → ${provider}`)
-    // Session switching wired in Phase 6
   }
 
   private onSizeChange(char: CharacterName, size: CharacterSize): void {
