@@ -14,7 +14,7 @@ win:
       arch: [x64]
     - target: zip
       arch: [x64]
-  icon: assets/app.ico
+  icon: assets/icon_512x512.png
   signingHashAlgorithms: [sha256]
 
 nsis:
