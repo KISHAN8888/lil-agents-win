@@ -117,6 +117,7 @@ export class WalkerCharacter {
   private positionProgress = 0.5 + (Math.random() - 0.5) * 0.4 // 0.3..0.7 start
   private direction: 1 | -1 = Math.random() < 0.5 ? 1 : -1
   private lastSentFlipped: boolean | null = null
+  private modalOpen = false
 
   // idle
   private pauseMs = 500 + Math.random() * 1500 // initial random pause
@@ -128,6 +129,10 @@ export class WalkerCharacter {
   private walkDurationMs = 0
 
   private taskbar: TaskbarGeometry | null = null
+  
+  // Phase 11
+  private onWorkerRequest: ((cmd: any) => void) | null = null
+  private contextResolver: ((context: string) => void) | null = null
 
   constructor(name: CharacterName) {
     this.params = CHARACTER_PARAMS[name]
@@ -169,11 +174,19 @@ export class WalkerCharacter {
 
     log.info(`WalkerCharacter(${char}) window ${winW}x${winH} (charH=${charH}+bubble=${BUBBLE_H})`)
 
-    // Drain the "pressed since last call" low bit so a recent Enter/click
-    // (e.g. from running `npm run dev`) doesn't trigger a spurious popover
-    // on the very first tick before any human click has occurred.
     GetAsyncKeyState(VK_LBUTTON)
     setTimeout(() => { this.clickReady = true }, 500)
+  }
+
+  setWorkerHandler(handler: (cmd: any) => void): void {
+    this.onWorkerRequest = handler
+  }
+
+  onContextResult(context: string): void {
+    if (this.contextResolver) {
+      this.contextResolver(context)
+      this.contextResolver = null
+    }
   }
 
   get popover(): BrowserWindow | null {
@@ -185,7 +198,6 @@ export class WalkerCharacter {
     this.applyBounds()
   }
 
-  /** Called every ~16ms by the tick loop. dt = delta time in ms. */
   tick(dt: number): void {
     if (!this.taskbar) return
 
@@ -207,7 +219,6 @@ export class WalkerCharacter {
           if (this.positionProgress <= 0) this.direction = 1
           else if (this.positionProgress >= 1) this.direction = -1
           if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, false)
-          log.debug(`WalkerCharacter(${this.params.name}) walk complete → idle`)
         }
       }
     }
@@ -220,13 +231,15 @@ export class WalkerCharacter {
     return this.visible
   }
 
-  /** Called every tick — detects hover and clicks natively via Win32. */
+  setModalOpen(isOpen: boolean): void {
+    this.modalOpen = isOpen
+  }
+
   updateClickState(): void {
-    if (!this.clickReady) return
+    if (!this.clickReady || this.modalOpen) return
     const cursor = screen.getCursorScreenPoint()
     const b = this.win.getBounds()
 
-    // Only the character zone (below bubble) is interactive
     const inside =
       cursor.x >= b.x && cursor.x < b.x + b.width &&
       cursor.y >= b.y + BUBBLE_H && cursor.y < b.y + b.height
@@ -236,8 +249,6 @@ export class WalkerCharacter {
       this.win.setIgnoreMouseEvents(!inside, { forward: true })
     }
 
-    // GetAsyncKeyState low bit = button pressed since last call.
-    // We must read it every tick so the bit is consumed and not re-triggered.
     const clicked = inside && !!(GetAsyncKeyState(VK_LBUTTON) & 1)
     if (clicked) this.togglePopover()
   }
@@ -257,13 +268,9 @@ export class WalkerCharacter {
     } else {
       this.positionPopover()
       this.popoverWin.show()
-      // Session starts via onRendererReady() on first open.
-      // On subsequent opens, restart if the session died.
       if (this.rendererReady && !this.session?.isRunning) {
         void this.startSession()
       }
-      // Attach blur-to-hide after 300ms so the OS click-event cycle finishes
-      // before we start listening — otherwise blur fires immediately on Windows
       const win = this.popoverWin
       setTimeout(() => {
         if (!win.isDestroyed() && win.isVisible()) {
@@ -357,23 +364,27 @@ export class WalkerCharacter {
     }, 3000)
   }
 
-  // ---- session management ----
-
   async startSession(): Promise<void> {
-    // Guard on non-null: session is either already running or still starting.
-    // StrictMode double-invokes effects → POPOVER_READY fires twice; this
-    // prevents a second session from being created during that window.
     if (this.session !== null) return
+    
+    // Kim is the ingestion worker, she doesn't need an LLM session
+    if (this.params.name === 'kim') return
 
     const charConfig = store.get(this.params.name)
     const provider = charConfig.provider
-    const resolvedCwd = charConfig.workDir
-    const sessions = charConfig.sessions ?? {}
-    const resumeId = sessions[provider]?.sessionId
+    let resolvedCwd = charConfig.workDir
+
+    const isVaultMode = this.params.name === 'tuco' && store.get('vaultMode')
+    if (isVaultMode) {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) resolvedCwd = join(vaultPath, 'wiki')
+    }
+
+    const sessionsObj = isVaultMode ? (charConfig.vaultSessions ?? {}) : (charConfig.sessions ?? {})
+    const resumeId = sessionsObj[provider]?.sessionId
     this.currentResponseText = ''
     this.session = createSession(provider)
 
-    // Forward all session events to the popover renderer
     const send = (channel: string, ...args: unknown[]) => {
       const wc = this.popoverWin?.webContents
       if (wc && !wc.isDestroyed()) wc.send(channel, ...args)
@@ -382,22 +393,25 @@ export class WalkerCharacter {
     this.session.on('sessionId', id => {
       const cfg = store.get(this.params.name)
       const currentProvider = cfg.provider
-      const sessions = { ...cfg.sessions }
-      sessions[currentProvider] = { ...sessions[currentProvider], sessionId: id, history: sessions[currentProvider]?.history ?? [] }
-      store.set(this.params.name, { ...cfg, sessions })
+      if (isVaultMode) {
+        const vs = { ...cfg.vaultSessions }
+        vs[currentProvider] = { ...vs[currentProvider], sessionId: id, history: vs[currentProvider]?.history ?? [] }
+        store.set(this.params.name, { ...cfg, vaultSessions: vs })
+      } else {
+        const s = { ...cfg.sessions }
+        s[currentProvider] = { ...s[currentProvider], sessionId: id, history: s[currentProvider]?.history ?? [] }
+        store.set(this.params.name, { ...cfg, sessions: s })
+      }
     })
     this.session.on('text', chunk => {
       this.currentResponseText += chunk
       if (this.thinkingActive || this.toolBubbleActive) {
-        if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
-        this.thinkingActive = false
-        this.toolBubbleActive = false
+        this.stopThinking()
         this.hideBubble()
       }
       send(IPC.SESSION_TEXT, chunk)
     })
     this.session.on('toolUse', (name, input) => {
-      if (this.thinkingTimer) { clearInterval(this.thinkingTimer); this.thinkingTimer = null }
       this.thinkingActive = false
       this.toolBubbleActive = true
       const label = name.length > 10 ? name.slice(0, 9) + '…' : name
@@ -409,15 +423,20 @@ export class WalkerCharacter {
       if (this.pendingUserMessage !== null) {
         const cfg = store.get(this.params.name)
         const provider = cfg.provider
-        const sessions = { ...cfg.sessions }
-        const providerSession = sessions[provider] ?? { history: [] }
+        const isVaultMode = this.params.name === 'tuco' && store.get('vaultMode')
+        const sessionsObj = isVaultMode ? { ...cfg.vaultSessions } : { ...cfg.sessions }
+        const providerSession = sessionsObj[provider] ?? { history: [] }
         const updatedHistory = [...(providerSession.history ?? []),
           { role: 'user' as const, text: this.pendingUserMessage },
           { role: 'assistant' as const, text: this.currentResponseText.trim() },
-        ].slice(-20) // keep last 10 pairs
+        ].slice(-20)
         
-        sessions[provider] = { ...providerSession, history: updatedHistory }
-        store.set(this.params.name, { ...cfg, sessions })
+        sessionsObj[provider] = { ...providerSession, history: updatedHistory }
+        if (isVaultMode) {
+          store.set(this.params.name, { ...cfg, vaultSessions: sessionsObj })
+        } else {
+          store.set(this.params.name, { ...cfg, sessions: sessionsObj })
+        }
         
         this.pendingUserMessage = null
         this.currentResponseText = ''
@@ -435,30 +454,123 @@ export class WalkerCharacter {
       this.hideBubble()
       send(IPC.SESSION_ERROR, msg)
       this.session = null
-      this.currentResponseText = ''
+      
+      // Clear the invalid session ID
+      const cfg = store.get(this.params.name)
+      const provider = cfg.provider
+      const isVaultMode = this.params.name === 'tuco' && store.get('vaultMode')
+      const sessionsObj = isVaultMode ? { ...cfg.vaultSessions } : { ...cfg.sessions }
+      if (sessionsObj[provider]) {
+        delete sessionsObj[provider].sessionId
+      }
+      if (isVaultMode) {
+        store.set(this.params.name, { ...cfg, vaultSessions: sessionsObj })
+      } else {
+        store.set(this.params.name, { ...cfg, sessions: sessionsObj })
+      }
     })
     this.session.on('exit', () => {
       this.stopThinking()
       this.hideBubble()
       send(IPC.SESSION_EXIT)
       this.session = null
-      this.currentResponseText = ''
     })
 
     await this.session.start(resolvedCwd, resumeId)
   }
 
-  sendToSession(text: string): void {
+  async sendToSession(text: string): Promise<void> {
+    if (this.params.name === 'tuco' && text.startsWith('/note ')) {
+      const noteText = text.slice(6).trim()
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        this.win.emit('ingest-note', noteText)
+        return
+      }
+    }
+
+    if (this.params.name === 'kim') {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        let kind = 'text'
+        let payload = text.trim()
+        
+        try {
+          const url = new URL(payload)
+          if (url.protocol === 'http:' || url.protocol === 'https:') {
+            kind = 'url'
+          }
+        } catch {
+          // not a URL
+        }
+
+        if (kind === 'url') {
+          this.win.emit('ingest-url', payload)
+        } else {
+          this.win.emit('ingest-note', payload)
+        }
+        
+        // Echo to her history so it looks like it was processed
+        this.pendingUserMessage = text
+        this.currentResponseText = 'Added to vault.'
+        const send = (channel: string, ...args: unknown[]) => {
+          const wc = this.popoverWin?.webContents
+          if (wc && !wc.isDestroyed()) wc.send(channel, ...args)
+        }
+        
+        // Immediately show the response in the UI
+        send(IPC.SESSION_TEXT, this.currentResponseText)
+        
+        const cfg = store.get(this.params.name)
+        const provider = cfg.provider
+        const sessionsObj = { ...cfg.sessions }
+        const providerSession = sessionsObj[provider] ?? { history: [] }
+        const updatedHistory = [...(providerSession.history ?? []),
+          { role: 'user' as const, text: this.pendingUserMessage },
+          { role: 'assistant' as const, text: this.currentResponseText },
+        ].slice(-20)
+        
+        sessionsObj[provider] = { ...providerSession, history: updatedHistory }
+        store.set(this.params.name, { ...cfg, sessions: sessionsObj })
+        
+        this.pendingUserMessage = null
+        this.currentResponseText = ''
+        send(IPC.SESSION_TURN_COMPLETE)
+        return
+      }
+    }
+
+    let message = text
+    if (this.params.name === 'tuco' && store.get('vaultMode')) {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath && this.onWorkerRequest) {
+        this.startThinking()
+        const context = await new Promise<string>(resolve => {
+          this.contextResolver = resolve
+          this.onWorkerRequest!({ cmd: 'get_context', vault_path: vaultPath, query: text })
+          setTimeout(() => {
+            if (this.contextResolver) {
+              this.contextResolver('')
+              this.contextResolver = null
+            }
+          }, 5000)
+        })
+        if (context) {
+          message = `Context from personal wiki:\n---\n${context}\n---\n\nUser query: ${text}`
+        }
+      }
+    }
+
     this.pendingUserMessage = text
     if (this.session?.isRunning) {
-      this.startThinking()
-      this.session.send(text)
+      if (!this.thinkingActive) this.startThinking()
+      this.session.send(message)
       return
     }
     void this.startSession().then(() => {
       if (this.session) {
-        this.startThinking()
-        this.session.send(text)
+        if (!this.thinkingActive) this.startThinking()
+        this.session.send(message)
       }
     })
   }
@@ -478,7 +590,6 @@ export class WalkerCharacter {
     const folderName = dirPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? dirPath
     this.showBubble(`📁 ${folderName}`, 'complete')
     setTimeout(() => this.hideBubble(), 2500)
-    log.info(`WorkDir: ${this.params.name} → ${dirPath}`)
   }
 
   applyProvider(provider: AgentProvider): void {
@@ -487,17 +598,13 @@ export class WalkerCharacter {
     store.set(this.params.name, { ...cfg, provider })
     this.terminateSession()
     
-    // Update popover UI if it's open
     const wc = this.popoverWin?.webContents
     if (wc && !wc.isDestroyed()) {
       wc.send(IPC.SESSION_PROVIDER, provider)
-      // Also send history for new provider
       const sessions = cfg.sessions ?? {}
       const history = sessions[provider]?.history ?? []
       wc.send(IPC.SESSION_HISTORY, history)
     }
-
-    log.info(`WalkerCharacter(${this.params.name}) provider → ${provider}`)
   }
 
   toggleVisibility(): void {
@@ -507,14 +614,12 @@ export class WalkerCharacter {
     } else {
       this.win.hide()
     }
-    log.info(`WalkerCharacter(${this.params.name}) visibility → ${this.visible}`)
   }
 
   applySize(size: CharacterSize): void {
     const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
     const { winW, winH } = charToWindow(charH, this.params.name)
     this.win.setSize(winW, winH)
-    log.info(`WalkerCharacter(${this.params.name}) size → ${size} (${winW}x${winH})`)
   }
 
   destroy(): void {
@@ -524,8 +629,6 @@ export class WalkerCharacter {
     this.popoverWin = null
     this.win.destroy()
   }
-
-  // ---- private helpers ----
 
   applyTheme(theme: ThemeName): void {
     const wc = this.popoverWin?.webContents
@@ -554,7 +657,6 @@ export class WalkerCharacter {
       },
     })
 
-    // Below screen-saver (walker) level
     win.setAlwaysOnTop(true, 'floating')
 
     if (process.env['ELECTRON_RENDERER_URL']) {
@@ -567,45 +669,30 @@ export class WalkerCharacter {
       })
     }
 
-    log.info(`WalkerCharacter(${char}) popover created`)
     return win
   }
 
   private positionPopover(): void {
     if (!this.popoverWin) return
-
     const walkerBounds = this.win.getBounds()
     const display = screen.getDisplayMatching(walkerBounds)
     const { x: areaX, y: areaY, width: areaW, height: areaH } = display.workArea
-
-    // Center horizontally over walker, sit above the character (not the bubble)
     let px = walkerBounds.x + Math.round(walkerBounds.width / 2) - Math.round(POPOVER_W / 2)
     let py = walkerBounds.y + BUBBLE_H - POPOVER_H - 8
-
-    // Clamp to work area
     px = Math.max(areaX, Math.min(px, areaX + areaW - POPOVER_W))
     py = Math.max(areaY, Math.min(py, areaY + areaH - POPOVER_H))
-
     this.popoverWin.setBounds({ x: px, y: py, width: POPOVER_W, height: POPOVER_H })
   }
 
   private startWalk(): void {
     const walkFraction = randomInRange(this.params.walkAmountRange)
-    // Walk duration = accelStart → walkStop, converted to ms
     this.walkDurationMs = (this.params.walkStop - this.params.accelStart) * 1000
-
     this.walkStartProgress = this.positionProgress
     const tentative = this.positionProgress + this.direction * walkFraction
     this.walkEndProgress = Math.max(0, Math.min(1, tentative))
-
     this.state = 'walking'
     this.walkTimer = 0
     if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, true, this.params.accelStart)
-    log.debug(
-      `WalkerCharacter(${this.params.name}) walk start ` +
-        `progress=${this.positionProgress.toFixed(3)} → ${this.walkEndProgress.toFixed(3)} ` +
-        `dir=${this.direction}`
-    )
   }
 
   private syncFlip(): void {
@@ -619,33 +706,18 @@ export class WalkerCharacter {
   private applyBounds(): void {
     if (!this.taskbar) return
     const { rect, edge } = this.taskbar
-
     const size = store.get(`${this.params.name}.size`, 'large') as string
     const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
     const { winW, winH } = charToWindow(charH, this.params.name)
-
-    // positionProgress (0..1) maps to horizontal offset within taskbar
     const maxOffset = Math.max(0, rect.w - winW)
     const x = rect.x + Math.round(this.positionProgress * maxOffset)
-
-    // Window extends BUBBLE_H above the character area, so shift y up by BUBBLE_H
-    // to keep character feet at the same screen position as before.
     let y: number
     switch (edge) {
-      case 'bottom':
-        y = rect.y - charH + this.params.yOffset - BUBBLE_H
-        break
-      case 'top':
-        y = rect.y + rect.h - this.params.yOffset - BUBBLE_H
-        break
-      case 'left':
-        y = Math.round(screen.getPrimaryDisplay().bounds.height / 2 - charH / 2) - BUBBLE_H
-        break
-      case 'right':
-        y = Math.round(screen.getPrimaryDisplay().bounds.height / 2 - charH / 2) - BUBBLE_H
-        break
+      case 'bottom': y = rect.y - charH + this.params.yOffset - BUBBLE_H; break
+      case 'top': y = rect.y + rect.h - this.params.yOffset - BUBBLE_H; break
+      case 'left': y = Math.round(screen.getPrimaryDisplay().bounds.height / 2 - charH / 2) - BUBBLE_H; break
+      case 'right': y = Math.round(screen.getPrimaryDisplay().bounds.height / 2 - charH / 2) - BUBBLE_H; break
     }
-
     this.win.setBounds({ x, y: y!, width: winW, height: winH })
   }
 }

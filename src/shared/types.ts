@@ -54,6 +54,8 @@ export interface AppStore {
   tuco: CharacterConfig
   kim: CharacterConfig
   theme: ThemeName
+  vaultPath?: string
+  vaultMode: boolean
   hasCompletedOnboarding: boolean
   soundEnabled: boolean
   disableGpu: boolean

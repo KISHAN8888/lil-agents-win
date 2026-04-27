@@ -1,10 +1,13 @@
-import { app, screen, ipcMain, globalShortcut } from 'electron'
+import { app, screen, ipcMain, globalShortcut, powerMonitor } from 'electron'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { TaskbarMonitor } from '../platform/taskbar'
 import { FullscreenMonitor } from '../platform/fullscreen'
 import { AppTray } from '../platform/tray'
 import { AppUpdater } from '../updater'
 import { TickLoop } from './tickLoop'
 import { WalkerCharacter } from './WalkerCharacter'
+import { WorkerProcess } from './WorkerProcess'
 import { IPC } from '../ipc/channels'
 import store from '../store'
 import log from '../logger'
@@ -18,6 +21,7 @@ export class AppController {
   private readonly fullscreen: FullscreenMonitor
   private readonly updater: AppUpdater
   private readonly tick: TickLoop
+  private readonly worker: WorkerProcess
   private lastTickTime = 0
   private lastZOrder: 'tuco-front' | 'kim-front' | 'none' = 'none'
   private hiddenForFullscreen = false
@@ -28,13 +32,101 @@ export class AppController {
     this.fullscreen = new FullscreenMonitor()
     this.updater = new AppUpdater()
     this.tick = new TickLoop()
+    this.worker = new WorkerProcess()
+    
+    powerMonitor.on('resume', () => this.checkCompileScheduler())
   }
 
   init(): void {
     this.logDisplayInfo()
 
+    // Initialize vault path if not set
+    if (!store.get('vaultPath')) {
+      const defaultVault = join(app.getPath('home'), 'lil-agents-vault')
+      store.set('vaultPath', defaultVault)
+      log.info(`Initializing default vault path: ${defaultVault}`)
+    }
+
+    this.worker.start()
+    this.worker.send({ cmd: 'status' })
+    const vaultPath = store.get('vaultPath')
+    if (vaultPath) {
+      const kimConfig = store.get('kim')
+      this.worker.send({ cmd: 'init_vault', path: vaultPath, provider: kimConfig.provider })
+      // Initial check after 5s
+      setTimeout(() => this.checkCompileScheduler(), 5000)
+    }
+
+    this.worker.on('event', (event) => {
+      if (event.event === 'task_completed') {
+        this.kim?.showBubble('done!', 'complete')
+        setTimeout(() => this.kim?.hideBubble(), 3000)
+      } else if (event.event === 'task_failed') {
+        this.kim?.showBubble('error', 'default')
+        log.error(`Ingest task failed: ${event.error}`)
+        setTimeout(() => this.kim?.hideBubble(), 3000)
+      } else if (event.event === 'context_result') {
+        this.tuco?.onContextResult(event.context)
+      }
+    })
+
     this.tuco = new WalkerCharacter('tuco')
     this.kim = new WalkerCharacter('kim')
+
+    this.tuco.setWorkerHandler((cmd) => this.worker.send(cmd))
+    this.kim.setWorkerHandler((cmd) => this.worker.send(cmd))
+
+    this.tuco.win.on('ingest-note' as any, (text: string) => {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        this.kim?.showBubble('ingesting...')
+        this.worker.send({
+          cmd: 'ingest',
+          kind: 'text',
+          text: text,
+          vault_path: vaultPath
+        })
+      }
+    })
+
+    this.kim.win.on('ingest-note' as any, (text: string) => {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        this.kim?.showBubble('ingesting...')
+        this.worker.send({
+          cmd: 'ingest',
+          kind: 'text',
+          text: text,
+          vault_path: vaultPath
+        })
+      }
+    })
+
+    this.tuco.win.on('ingest-url' as any, (url: string) => {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        this.kim?.showBubble('ingesting...')
+        this.worker.send({
+          cmd: 'ingest',
+          kind: 'url',
+          path: url,
+          vault_path: vaultPath
+        })
+      }
+    })
+
+    this.kim.win.on('ingest-url' as any, (url: string) => {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        this.kim?.showBubble('ingesting...')
+        this.worker.send({
+          cmd: 'ingest',
+          kind: 'url',
+          path: url,
+          vault_path: vaultPath
+        })
+      }
+    })
 
     this.tray = new AppTray({
       onProviderChange: (char, provider) => this.onProviderChange(char, provider),
@@ -42,6 +134,7 @@ export class AppController {
       onWorkDirChange: (char, dir) => this.onWorkDirChange(char, dir),
       onHide: (char) => this.onHide(char),
       onThemeChange: (theme) => this.onThemeChange(theme),
+      onVaultModeChange: (enabled) => this.onVaultModeChange(enabled),
       onCheckUpdates: () => this.updater.checkNow(),
       onQuit: () => {
         this.destroy()
@@ -128,6 +221,32 @@ export class AppController {
         this.tray?.buildMenu()
       }
     })
+
+    ipcMain.on(IPC.WALKER_INGEST, (event, filePath: string, caption?: string) => {
+      const char = this.findCharByWalker(event.sender)
+      if (char) {
+        const vaultPath = store.get('vaultPath')
+        if (!vaultPath) {
+          log.error('No vault path configured')
+          return
+        }
+        char.showBubble('ingesting...')
+        this.worker.send({
+          cmd: 'ingest',
+          kind: 'file',
+          path: filePath,
+          caption: caption,
+          vault_path: vaultPath
+        })
+      }
+    })
+
+    ipcMain.on(IPC.WALKER_MODAL_OPEN, (event, isOpen: boolean) => {
+      const char = this.findCharByWalker(event.sender)
+      if (char) {
+        char.setModalOpen(isOpen)
+      }
+    })
   }
 
   private findCharByWalker(sender: Electron.WebContents): WalkerCharacter | null {
@@ -140,6 +259,29 @@ export class AppController {
     if (sender === this.tuco?.popover?.webContents) return this.tuco
     if (sender === this.kim?.popover?.webContents) return this.kim
     return null
+  }
+
+  private checkCompileScheduler(): void {
+    const vaultPath = store.get('vaultPath')
+    if (!vaultPath) return
+
+    const statePath = join(vaultPath, '.sage', 'state.json')
+    let lastCompileAt = 0
+    if (existsSync(statePath)) {
+      try {
+        const state = JSON.parse(readFileSync(statePath, 'utf8'))
+        lastCompileAt = state.lastCompileAt || 0
+      } catch (e) {
+        log.error(`Failed to read vault state: ${e}`)
+      }
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    const dayInSec = 24 * 60 * 60
+    if (now - lastCompileAt > dayInSec) {
+      log.info('Scheduled stitch pass triggered')
+      this.worker.send({ cmd: 'compile_now', vault_path: vaultPath })
+    }
   }
 
   private syncZOrder(): void {
@@ -196,7 +338,31 @@ export class AppController {
   private onProviderChange(char: CharacterName, provider: AgentProvider): void {
     const walker = char === 'tuco' ? this.tuco : this.kim
     walker?.applyProvider(provider)
+
+    if (char === 'kim') {
+      const vaultPath = store.get('vaultPath')
+      if (vaultPath) {
+        this.worker.send({ cmd: 'update_config', vault_path: vaultPath, config: { llm_provider: provider } })
+      }
+    }
+
     log.info(`Provider: ${char} → ${provider}`)
+  }
+
+  private onVaultModeChange(enabled: boolean): void {
+    // Terminate Tuco's session so it restarts with the new CWD
+    this.tuco?.terminateSession()
+    
+    // Clear ALL sessions for Tuco so it doesn't try to resume an obsolete session ID
+    // either in the default directory or the vault directory.
+    const tucoCfg = store.get('tuco')
+    if (tucoCfg) {
+      store.set('tuco', { ...tucoCfg, sessions: {}, vaultSessions: {} })
+    }
+
+    this.tuco?.showBubble(enabled ? 'Vault chat' : 'Free chat', 'complete')
+    setTimeout(() => this.tuco?.hideBubble(), 2500)
+    log.info(`Vault mode → ${enabled}`)
   }
 
   private onSizeChange(char: CharacterName, size: CharacterSize): void {
@@ -228,6 +394,7 @@ export class AppController {
 
   destroy(): void {
     globalShortcut.unregisterAll()
+    this.worker.stop()
     this.updater.stop()
     this.fullscreen.stop()
     this.tick.stop()

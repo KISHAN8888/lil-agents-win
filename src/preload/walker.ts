@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('walkerAPI', {
   onClick: () => ipcRenderer.send(IPC.WALKER_CLICK),
   signalReady: () => ipcRenderer.send(IPC.WALKER_READY),
   setWorkDir: (path: string) => ipcRenderer.send(IPC.WALKER_SET_WORKDIR, path),
+  ingest: (path: string, caption?: string) => ipcRenderer.send(IPC.WALKER_INGEST, path, caption),
+  setModalOpen: (isOpen: boolean) => ipcRenderer.send(IPC.WALKER_MODAL_OPEN, isOpen),
   onFlip: (cb: (flipped: boolean) => void) => { _onFlip = cb },
   onWalking: (cb: (isWalking: boolean, seekTo?: number) => void) => { _onWalking = cb },
   onBubbleShow: (cb: (text: string, variant: string) => void) => { _onBubbleShow = cb },

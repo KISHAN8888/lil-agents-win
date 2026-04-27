@@ -1,0 +1,27 @@
+A new article has been added to a personal knowledge wiki. You're checking whether an existing entity page should be updated.
+
+Existing entity page ({{ENTITY_PATH}}):
+---
+{{ENTITY_CURRENT_CONTENT}}
+---
+
+New article that mentions this entity ({{NEW_ARTICLE_PATH}}):
+---
+{{NEW_ARTICLE_CONTENT}}
+---
+
+Decide:
+1. Should the entity page be updated to reflect the new information? Only update if the new article adds something materially new about this entity. Style/grammar tweaks are not material.
+2. Does the new article contradict any existing claim on the entity page?
+
+Return strict JSON:
+{
+  "should_update": <bool>,
+  "updated_content": "<full new content of entity page if should_update=true, else null>",
+  "contradiction": {
+    "old_claim": "<quote from entity page or null>",
+    "new_claim": "<quote from new article or null>"
+  }
+}
+
+If should_update is false, the entity page is left alone. Be conservative — most ingests should not trigger updates.

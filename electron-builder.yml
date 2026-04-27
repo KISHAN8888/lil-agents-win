@@ -12,7 +12,13 @@ extraResources:
   - from: assets
     to: assets
     filter:
-      - "**/*.webm"
+      - '**/*'
+  - from: worker/dist/worker.exe
+    to: worker/worker.exe
+  - from: resources/bin
+    to: bin
+    filter:
+      - '**/*'
       - "**/*.png"
       - "**/*.mp3"
       - "**/*.m4a"

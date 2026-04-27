@@ -1,0 +1,19 @@
+The following are recent article titles and one-line summaries from a personal knowledge wiki. Suggest 0 to 3 missing "concept" articles that, if written, would tie related articles together. Only suggest concepts where 3+ existing articles would link to them. Be conservative.
+
+Articles:
+{{ARTICLE_LIST}}
+
+Return strict JSON:
+
+CRITICAL INSTRUCTIONS:
+- DO NOT use any tools.
+- DO NOT ask for permission to write files.
+- ONLY output the raw JSON object directly in your response.
+
+{
+  "suggestions": [
+    {"title": "...", "rationale": "...", "would_link_from": ["path1", "path2", "path3"]}
+  ]
+}
+
+If no good suggestions, return {"suggestions": []}.

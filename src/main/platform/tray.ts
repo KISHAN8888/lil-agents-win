@@ -13,6 +13,7 @@ export interface TrayHandlers {
   onThemeChange: (theme: ThemeName) => void
   onCheckUpdates: () => void
   onQuit: () => void
+  onVaultModeChange: (enabled: boolean) => void
 }
 
 const PROVIDERS: AgentProvider[] = ['claude', 'codex', 'gemini', 'copilot', 'opencode', 'openclaw']
@@ -104,14 +105,67 @@ export class AppTray {
       },
     ]
 
+    const tucoSubmenu = charSubmenu('tuco', tucoConfig.provider, tucoConfig.size)
+    // Add Vault Mode to Tuco
+    tucoSubmenu.splice(3, 0, { type: 'separator' }, {
+      label: 'Mode',
+      submenu: [
+        {
+          label: 'Free chat',
+          type: 'radio' as const,
+          checked: !store.get('vaultMode'),
+          click: () => {
+            store.set('vaultMode', false)
+            this.handlers.onVaultModeChange(false)
+            this.buildMenu()
+          },
+        },
+        {
+          label: 'Vault chat',
+          type: 'radio' as const,
+          checked: store.get('vaultMode'),
+          click: () => {
+            store.set('vaultMode', true)
+            this.handlers.onVaultModeChange(true)
+            this.buildMenu()
+          },
+        },
+      ],
+    })
+
     const menu = Menu.buildFromTemplate([
       {
         label: 'Tuco',
-        submenu: charSubmenu('tuco', tucoConfig.provider, tucoConfig.size),
+        submenu: tucoSubmenu,
       },
       {
         label: 'Kim',
-        submenu: charSubmenu('kim', kimConfig.provider, kimConfig.size),
+        submenu: [
+          { label: 'Role: Ingestion Worker', enabled: false },
+          {
+            label: 'Ingestion Provider',
+            submenu: (['claude', 'gemini'] as AgentProvider[]).map((p) => ({
+              label: p.charAt(0).toUpperCase() + p.slice(1),
+              type: 'radio' as const,
+              checked: kimConfig.provider === p,
+              click: () => this.handlers.onProviderChange('kim', p),
+            })),
+          },
+          { type: 'separator' },
+          {
+            label: 'Size',
+            submenu: ['small', 'medium', 'large'].map((s) => ({
+              label: s.charAt(0).toUpperCase() + s.slice(1),
+              type: 'radio' as const,
+              checked: kimConfig.size === s,
+              click: () => this.handlers.onSizeChange('kim', s as CharacterSize),
+            })),
+          },
+          {
+            label: 'Hide',
+            click: () => this.handlers.onHide('kim'),
+          },
+        ],
       },
       { type: 'separator' },
       {

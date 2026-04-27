@@ -6,6 +6,7 @@ const store = new Store<AppStore>({
     tuco: { provider: 'claude', size: 'large', sessions: {} },
     kim: { provider: 'claude', size: 'large', sessions: {} },
     theme: 'midnight',
+    vaultMode: false,
     hasCompletedOnboarding: false,
     soundEnabled: true,
     disableGpu: false,

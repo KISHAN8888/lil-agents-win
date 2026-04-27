@@ -1,0 +1,19 @@
+Summarize the following content for a personal knowledge wiki. Be terse and factual.
+
+Return strict JSON:
+
+CRITICAL INSTRUCTIONS:
+- DO NOT use any tools.
+- DO NOT ask for permission to write files.
+- ONLY output the raw JSON object directly in your response.
+
+{
+  "summary": "<2-4 sentence summary>",
+  "keywords": ["kw1", ... up to 10],
+  "entities": ["entity1", ... up to 5]
+}
+
+Content:
+---
+{{CONTENT}}
+---

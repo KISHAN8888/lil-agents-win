@@ -1,0 +1,18 @@
+[project]
+name = "lil-agents-worker"
+version = "0.1.0"
+description = "Ingestion pipeline for lil-agents-win"
+dependencies = [
+    "pypdf>=4.2.0",
+    "python-docx>=1.1.2",
+    "trafilatura>=1.11.0",
+    "requests>=2.32.0",
+    "portalocker>=2.8.2",
+    "pydantic>=2.7.4",
+    "rapidfuzz>=3.9.3",
+    "pyyaml>=6.0.1",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build-meta"

@@ -3,6 +3,8 @@ export const IPC = {
   WALKER_CLICKABLE: 'walker:clickable',
   WALKER_CLICK: 'walker:click',
   WALKER_SET_WORKDIR: 'walker:setWorkDir',
+  WALKER_INGEST: 'walker:ingest',
+  WALKER_MODAL_OPEN: 'walker:modalOpen',
 
   // Main → Walker
   WALKER_POSITION: 'walker:position',

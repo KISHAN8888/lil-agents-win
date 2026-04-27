@@ -48,35 +48,31 @@ export class GeminiSession extends BaseSession {
       return
     }
 
-    let bin = 'node'
-    let args: string[] = []
-
-    // On Windows, if we found gemini.cmd, try to spawn the JS file directly to avoid shell quoting issues
-    if (geminiCmd.toLowerCase().endsWith('.cmd')) {
-      const entryPoint = geminiCmd.replace(/gemini\.cmd$/i, 'node_modules/@google/gemini-cli/bundle/gemini.js')
-      bin = 'node'
-      args = [entryPoint, ...GEMINI_ARGS]
-    } else {
-      bin = geminiCmd
-      args = [...GEMINI_ARGS]
-    }
+    let bin = geminiCmd
+    let args = [...GEMINI_ARGS]
+    const isWindows = process.platform === 'win32'
 
     if (this.resumeId) {
       args.push('--resume', this.resumeId)
     }
-    args.push('--prompt', message)
 
     log.info(`GeminiSession spawning: ${bin} args=${args.join(' ')}`)
 
     this.proc = spawn(bin, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env,
-      shell: false, // Avoid shell on Windows for better arg parsing
+      shell: isWindows, // Need shell on Windows for gemini.cmd and to avoid AttachConsole errors
       windowsHide: true,
       cwd: this.cwd,
     })
 
     this.buf = ''
+
+    // Write the prompt to stdin and close it
+    if (this.proc.stdin) {
+      this.proc.stdin.write(message)
+      this.proc.stdin.end()
+    }
 
     this.proc.stdout?.on('data', (chunk: Buffer) => {
       this.buf += chunk.toString('utf8')

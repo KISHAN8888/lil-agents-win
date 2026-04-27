@@ -1,0 +1,30 @@
+You are writing a wiki article for a personal knowledge base. The article will live at:
+  {{TARGET_PATH}}
+
+Source content:
+---
+{{EXTRACTED}}
+---
+
+Classification: {{CLASS}}
+Summary: {{SUMMARY}}
+User caption: {{CAPTION}}
+Candidate related articles in the wiki:
+{{RELATED_LIST}}
+
+Write the body of the article in markdown. Do NOT write YAML frontmatter — that is added programmatically.
+
+Structure:
+- Short opening paragraph in the user's voice
+- 2-5 sections with ## headings as appropriate
+- A "## Connections" section at the end with [[wiki-link]] references to related articles. Only link genuine connections. Use exact paths from the candidate list. Omit the section if no genuine connection.
+- Do NOT include a "## Backlinks" section — that's managed separately.
+
+CRITICAL INSTRUCTIONS:
+- DO NOT use any tools.
+- DO NOT attempt to write or save files.
+- DO NOT ask for permission to write the file.
+- DO NOT output conversational filler (e.g. "Here is the article...").
+- ONLY output the raw markdown text for the article body directly in your response.
+
+Be concise. This is a personal note, not a Wikipedia article.
