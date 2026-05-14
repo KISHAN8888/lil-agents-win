@@ -8,7 +8,7 @@ export type AgentProvider =
 
 export type CharacterSize = 'small' | 'medium' | 'large'
 
-export type CharacterName = 'tuco' | 'kim'
+export type CharacterName = 'saul' | 'kim'
 
 export type ThemeName = 'midnight' | 'peach' | 'cloud' | 'moss'
 
@@ -48,10 +48,14 @@ export interface CharacterConfig {
     sessionId?: string
     history: HistoryEntry[]
   }>>
+  vaultSessions?: Partial<Record<AgentProvider, {
+    sessionId?: string
+    history: HistoryEntry[]
+  }>>
 }
 
 export interface AppStore {
-  tuco: CharacterConfig
+  saul: CharacterConfig
   kim: CharacterConfig
   theme: ThemeName
   vaultPath?: string

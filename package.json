@@ -8,6 +8,7 @@
     "dev": "node scripts/dev.js",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "predist": "powershell -ExecutionPolicy Bypass -File scripts/bundle-worker.ps1",
     "dist": "electron-builder",
     "test": "vitest run",
     "test:ui": "vitest --ui",

@@ -27,10 +27,14 @@ interface CharacterParams {
   walkStop: number
   walkAmountRange: [number, number]
   yOffset: number
+  static?: boolean        // never walks, video always plays
+  staticPosition?: number // fixed positionProgress (0–1)
+  staticHeight?: number   // bypass stored size for static characters
+  defaultSize?: CharacterSize // fallback when user hasn't explicitly set a size
 }
 
-const TUCO_PARAMS: CharacterParams = {
-  name: 'tuco',
+const SAUL_PARAMS: CharacterParams = {
+  name: 'saul',
   videoFile: 'Walking monkey.webm',
   videoDurationSec: 1.0,
   accelStart: 0,
@@ -39,22 +43,26 @@ const TUCO_PARAMS: CharacterParams = {
   walkStop: 8.0,
   walkAmountRange: [0.2, 0.4],
   yOffset: 25,
+  defaultSize: 'medium',
 }
 
 const KIM_PARAMS: CharacterParams = {
   name: 'kim',
-  videoFile: 'walk.webm',
+  videoFile: 'Loader cat.webm',
   videoDurationSec: 1.0,
   accelStart: 0,
   fullSpeedStart: 0,
   decelStart: 8.0,
   walkStop: 8.0,
   walkAmountRange: [0.2, 0.4],
-  yOffset: 25,
+  yOffset: 48,
+  static: true,
+  staticPosition: 0.97,
+  staticHeight: 170,
 }
 
 export const CHARACTER_PARAMS: Record<CharacterName, CharacterParams> = {
-  tuco: TUCO_PARAMS,
+  saul: SAUL_PARAMS,
   kim: KIM_PARAMS,
 }
 
@@ -83,7 +91,7 @@ function randomInRange([lo, hi]: [number, number]): number {
   return lo + Math.random() * (hi - lo)
 }
 
-function charToWindow(charH: number, charName: CharacterName): { winW: number; winH: number } {
+function charToWindow(charH: number): { winW: number; winH: number } {
   const winW = charH
   return { winW, winH: charH + BUBBLE_H }
 }
@@ -116,8 +124,10 @@ export class WalkerCharacter {
   private currentResponseText = ''
   private positionProgress = 0.5 + (Math.random() - 0.5) * 0.4 // 0.3..0.7 start
   private direction: 1 | -1 = Math.random() < 0.5 ? 1 : -1
+  private maxProgress = 1
   private lastSentFlipped: boolean | null = null
   private modalOpen = false
+  private preventHideOnBlur = false
 
   // idle
   private pauseMs = 500 + Math.random() * 1500 // initial random pause
@@ -136,9 +146,9 @@ export class WalkerCharacter {
 
   constructor(name: CharacterName) {
     this.params = CHARACTER_PARAMS[name]
-    const size = store.get(`${name}.size`, 'large') as string
-    const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
-    const { winW, winH } = charToWindow(charH, name)
+    const size = (store.get(`${name}.size`) as string | undefined) ?? this.params.defaultSize ?? 'large'
+    const charH = this.params.staticHeight ?? (SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large)
+    const { winW, winH } = charToWindow(charH)
 
     this.win = new BrowserWindow({
       width: winW,
@@ -174,6 +184,10 @@ export class WalkerCharacter {
 
     log.info(`WalkerCharacter(${char}) window ${winW}x${winH} (charH=${charH}+bubble=${BUBBLE_H})`)
 
+    if (this.params.static) {
+      this.positionProgress = this.params.staticPosition ?? 0
+    }
+
     GetAsyncKeyState(VK_LBUTTON)
     setTimeout(() => { this.clickReady = true }, 500)
   }
@@ -193,6 +207,10 @@ export class WalkerCharacter {
     return this.popoverWin
   }
 
+  setMaxProgress(max: number): void {
+    this.maxProgress = Math.max(0, Math.min(1, max))
+  }
+
   updateTaskbar(geometry: TaskbarGeometry): void {
     this.taskbar = geometry
     this.applyBounds()
@@ -200,6 +218,11 @@ export class WalkerCharacter {
 
   tick(dt: number): void {
     if (!this.taskbar) return
+
+    if (this.params.static) {
+      this.applyBounds()
+      return
+    }
 
     if (!this.walkPaused) {
       if (this.state === 'idle') {
@@ -214,10 +237,10 @@ export class WalkerCharacter {
         if (t >= 1) {
           this.positionProgress = this.walkEndProgress
           this.state = 'idle'
-          this.pauseMs = 500 + Math.random() * 1500
+          this.pauseMs = 0
           this.walkTimer = 0
           if (this.positionProgress <= 0) this.direction = 1
-          else if (this.positionProgress >= 1) this.direction = -1
+          else if (this.positionProgress >= this.maxProgress) this.direction = -1
           if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, false)
         }
       }
@@ -233,10 +256,31 @@ export class WalkerCharacter {
 
   setModalOpen(isOpen: boolean): void {
     this.modalOpen = isOpen
+    if (isOpen) {
+      this.clickable = true
+      this.win.setIgnoreMouseEvents(false)
+      this.win.setFocusable(true)
+      this.win.focus()
+    } else {
+      this.win.setFocusable(false)
+    }
+  }
+
+  setPreventHideOnBlur(prevent: boolean): void {
+    this.preventHideOnBlur = prevent
   }
 
   updateClickState(): void {
-    if (!this.clickReady || this.modalOpen) return
+    if (!this.clickReady) return
+    
+    if (this.modalOpen) {
+      if (!this.clickable) {
+        this.clickable = true
+        this.win.setIgnoreMouseEvents(false)
+      }
+      return
+    }
+
     const cursor = screen.getCursorScreenPoint()
     const b = this.win.getBounds()
 
@@ -274,7 +318,18 @@ export class WalkerCharacter {
       const win = this.popoverWin
       setTimeout(() => {
         if (!win.isDestroyed() && win.isVisible()) {
-          win.once('blur', () => win.hide())
+          win.once('blur', () => {
+            if (this.preventHideOnBlur) {
+              // Wait for focus to return, then re-add the blur listener
+              win.once('focus', () => {
+                if (!win.isDestroyed() && win.isVisible()) {
+                  win.once('blur', () => win.hide())
+                }
+              })
+              return
+            }
+            win.hide()
+          })
         }
       }, 300)
     }
@@ -299,7 +354,9 @@ export class WalkerCharacter {
   onWalkerReady(): void {
     this.walkerReady = true
     if (!this.win.isDestroyed()) {
-      if (this.state === 'walking' && !this.walkPaused) {
+      if (this.params.static) {
+        this.win.webContents.send(IPC.WALKER_WALKING, true)
+      } else if (this.state === 'walking' && !this.walkPaused) {
         this.win.webContents.send(IPC.WALKER_WALKING, true, this.params.accelStart)
       } else {
         this.win.webContents.send(IPC.WALKER_WALKING, false)
@@ -374,7 +431,7 @@ export class WalkerCharacter {
     const provider = charConfig.provider
     let resolvedCwd = charConfig.workDir
 
-    const isVaultMode = this.params.name === 'tuco' && store.get('vaultMode')
+    const isVaultMode = this.params.name === 'saul' && store.get('vaultMode')
     if (isVaultMode) {
       const vaultPath = store.get('vaultPath')
       if (vaultPath) resolvedCwd = join(vaultPath, 'wiki')
@@ -423,7 +480,7 @@ export class WalkerCharacter {
       if (this.pendingUserMessage !== null) {
         const cfg = store.get(this.params.name)
         const provider = cfg.provider
-        const isVaultMode = this.params.name === 'tuco' && store.get('vaultMode')
+        const isVaultMode = this.params.name === 'saul' && store.get('vaultMode')
         const sessionsObj = isVaultMode ? { ...cfg.vaultSessions } : { ...cfg.sessions }
         const providerSession = sessionsObj[provider] ?? { history: [] }
         const updatedHistory = [...(providerSession.history ?? []),
@@ -458,7 +515,7 @@ export class WalkerCharacter {
       // Clear the invalid session ID
       const cfg = store.get(this.params.name)
       const provider = cfg.provider
-      const isVaultMode = this.params.name === 'tuco' && store.get('vaultMode')
+      const isVaultMode = this.params.name === 'saul' && store.get('vaultMode')
       const sessionsObj = isVaultMode ? { ...cfg.vaultSessions } : { ...cfg.sessions }
       if (sessionsObj[provider]) {
         delete sessionsObj[provider].sessionId
@@ -480,7 +537,7 @@ export class WalkerCharacter {
   }
 
   async sendToSession(text: string): Promise<void> {
-    if (this.params.name === 'tuco' && text.startsWith('/note ')) {
+    if (this.params.name === 'saul' && text.startsWith('/note ')) {
       const noteText = text.slice(6).trim()
       const vaultPath = store.get('vaultPath')
       if (vaultPath) {
@@ -541,7 +598,7 @@ export class WalkerCharacter {
     }
 
     let message = text
-    if (this.params.name === 'tuco' && store.get('vaultMode')) {
+    if (this.params.name === 'saul' && store.get('vaultMode')) {
       const vaultPath = store.get('vaultPath')
       if (vaultPath && this.onWorkerRequest) {
         this.startThinking()
@@ -617,8 +674,9 @@ export class WalkerCharacter {
   }
 
   applySize(size: CharacterSize): void {
+    if (this.params.staticHeight) return
     const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
-    const { winW, winH } = charToWindow(charH, this.params.name)
+    const { winW, winH } = charToWindow(charH)
     this.win.setSize(winW, winH)
   }
 
@@ -689,7 +747,7 @@ export class WalkerCharacter {
     this.walkDurationMs = (this.params.walkStop - this.params.accelStart) * 1000
     this.walkStartProgress = this.positionProgress
     const tentative = this.positionProgress + this.direction * walkFraction
-    this.walkEndProgress = Math.max(0, Math.min(1, tentative))
+    this.walkEndProgress = Math.max(0, Math.min(this.maxProgress, tentative))
     this.state = 'walking'
     this.walkTimer = 0
     if (!this.win.isDestroyed()) this.win.webContents.send(IPC.WALKER_WALKING, true, this.params.accelStart)
@@ -706,9 +764,9 @@ export class WalkerCharacter {
   private applyBounds(): void {
     if (!this.taskbar) return
     const { rect, edge } = this.taskbar
-    const size = store.get(`${this.params.name}.size`, 'large') as string
-    const charH = SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large
-    const { winW, winH } = charToWindow(charH, this.params.name)
+    const size = (store.get(`${this.params.name}.size`) as string | undefined) ?? this.params.defaultSize ?? 'large'
+    const charH = this.params.staticHeight ?? (SIZE_HEIGHT[size] ?? SIZE_HEIGHT.large)
+    const { winW, winH } = charToWindow(charH)
     const maxOffset = Math.max(0, rect.w - winW)
     const x = rect.x + Math.round(this.positionProgress * maxOffset)
     let y: number

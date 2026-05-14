@@ -1,14 +1,11 @@
-The following are recent article titles and one-line summaries from a personal knowledge wiki. Suggest 0 to 3 missing "concept" articles that, if written, would tie related articles together. Only suggest concepts where 3+ existing articles would link to them. Be conservative.
+### TASK
+Suggest 0 to 3 missing "concept" articles that would tie related articles together. Only suggest concepts where 3+ existing articles would link to them. Be conservative.
 
-Articles:
+### ARTICLES
 {{ARTICLE_LIST}}
 
-Return strict JSON:
-
-CRITICAL INSTRUCTIONS:
-- DO NOT use any tools.
-- DO NOT ask for permission to write files.
-- ONLY output the raw JSON object directly in your response.
+### OUTPUT FORMAT
+STRICT JSON ONLY. No prose. No preamble. No markdown blocks.
 
 {
   "suggestions": [

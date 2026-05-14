@@ -12,30 +12,17 @@ logger = logging.getLogger("worker.llm")
 
 def find_binary(name: str) -> str:
     """Finds the binary for the given tool (claude, gemini, rg)."""
-    # 1. Check if in PATH
     path = shutil.which(name)
     if path:
         return path
-    
-    # On Windows, try with .exe extension if not provided
+
     if sys.platform == "win32" and not name.lower().endswith(".exe"):
         path = shutil.which(name + ".exe")
         if path:
             return path
 
     home = Path.home()
-    
-    # 2. Check VS Code extension path (common for claude/rg)
-    if name == "claude":
-        ext_dir = home / ".vscode" / "extensions"
-        if ext_dir.exists():
-            matches = list(ext_dir.glob("anthropic.claude-code-*"))
-            if matches:
-                matches.sort(reverse=True)
-                binary = matches[0] / "resources" / "native-binary" / "claude.exe"
-                if binary.exists():
-                    return str(binary)
-                    
+
     if name == "rg" or name == "ripgrep":
         # Check bundled path
         if getattr(sys, 'frozen', False):
@@ -64,30 +51,52 @@ def find_binary(name: str) -> str:
     # 3. Fallback to just the name
     return name
 
-def call_llm(provider: str, prompt: str, timeout: int = 60, retries: int = 1) -> Optional[str]:
+def call_llm(provider: str, prompt: str, timeout: int = 120, retries: int = 1, cwd: Optional[str] = None) -> Optional[str]:
     """Calls the specified LLM CLI with the given prompt."""
-    
+
     binary_path = find_binary(provider)
-    cmd = [binary_path, "-p", prompt]
+
+    cmd = [binary_path]
+    if provider == "claude":
+        cmd.append("-p")
+    elif provider == "gemini":
+        # --skip-trust avoids the workspace-trust prompt in headless mode
+        cmd.extend(["--skip-trust", "-o", "text"])
 
     for attempt in range(retries + 1):
         try:
             logger.info(f"Calling {provider} (attempt {attempt + 1}) using {binary_path}...")
-            # Use stdin=subprocess.DEVNULL to avoid Claude CLI waiting for stdin
+
             result = subprocess.run(
                 cmd,
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 encoding="utf-8",
                 errors="replace",
                 shell=False,
-                stdin=subprocess.DEVNULL
+                cwd=cwd,
             )
-            
+
             if result.returncode == 0:
                 return result.stdout.strip()
             else:
+                if attempt == 0 and "-p" not in cmd:
+                    logger.warning(f"{provider} failed on stdin, retrying with -p flag...")
+                    fallback_result = subprocess.run(
+                        [binary_path, "-p", prompt],
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                        encoding="utf-8",
+                        errors="replace",
+                        shell=False,
+                        cwd=cwd,
+                    )
+                    if fallback_result.returncode == 0:
+                        return fallback_result.stdout.strip()
+
                 logger.error(f"{provider} failed with exit code {result.returncode}: {result.stderr}")
         except subprocess.TimeoutExpired:
             logger.warning(f"{provider} timed out after {timeout}s")
@@ -96,25 +105,35 @@ def call_llm(provider: str, prompt: str, timeout: int = 60, retries: int = 1) ->
             return None
         except Exception as e:
             logger.error(f"Error calling {provider}: {str(e)}")
-        
+
         if attempt < retries:
             time.sleep(2)
-            
+
     return None
 
-def call_llm_json(provider: str, prompt: str, timeout: int = 60) -> Optional[Dict[str, Any]]:
+def call_llm_json(provider: str, prompt: str, timeout: int = 120, cwd: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Calls LLM and attempts to parse JSON from the response."""
-    response = call_llm(provider, prompt, timeout)
+    response = call_llm(provider, prompt, timeout, cwd=cwd)
     if not response:
         return None
     
-    try:
-        start = response.find('{')
-        end = response.rfind('}')
-        if start != -1 and end != -1:
-            json_str = response[start:end+1]
+    # Try to find anything that looks like a JSON object { ... }
+    # This is more robust against LLM "helpful" preambles or markdown wrapping
+    start = response.find('{')
+    end = response.rfind('}')
+    
+    if start != -1 and end != -1:
+        json_str = response[start:end+1]
+        try:
             return json.loads(json_str)
-        return json.loads(response)
+        except json.JSONDecodeError:
+            # If that failed, maybe there are nested braces and we picked the wrong ones?
+            # But usually rfind('}') is what we want.
+            pass
+
+    # Fallback to direct parse if no braces found or extraction failed
+    try:
+        return json.loads(response.strip())
     except json.JSONDecodeError:
         logger.error(f"Failed to parse JSON from {provider} response: {response}")
         return None

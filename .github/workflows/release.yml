@@ -24,13 +24,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Node dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build renderer + main
         run: npm run build
 
-      - name: Package & publish
+      - name: Bundle worker + package installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist

@@ -1,4 +1,4 @@
-import { app, screen, ipcMain, globalShortcut, powerMonitor } from 'electron'
+import { app, screen, ipcMain, globalShortcut, powerMonitor, dialog } from 'electron'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { TaskbarMonitor } from '../platform/taskbar'
@@ -14,7 +14,7 @@ import log from '../logger'
 import type { CharacterName, AgentProvider, CharacterSize, ThemeName } from '../../shared/types'
 
 export class AppController {
-  private tuco: WalkerCharacter | null = null
+  private saul: WalkerCharacter | null = null
   private kim: WalkerCharacter | null = null
   private tray: AppTray | null = null
   private readonly taskbar: TaskbarMonitor
@@ -23,9 +23,9 @@ export class AppController {
   private readonly tick: TickLoop
   private readonly worker: WorkerProcess
   private lastTickTime = 0
-  private lastZOrder: 'tuco-front' | 'kim-front' | 'none' = 'none'
+  private lastZOrder: 'saul-front' | 'kim-front' | 'none' = 'none'
   private hiddenForFullscreen = false
-  private lastActiveChar: 'tuco' | 'kim' = 'tuco'
+  private lastActiveChar: 'saul' | 'kim' = 'saul'
 
   constructor() {
     this.taskbar = new TaskbarMonitor()
@@ -66,17 +66,17 @@ export class AppController {
         log.error(`Ingest task failed: ${event.error}`)
         setTimeout(() => this.kim?.hideBubble(), 3000)
       } else if (event.event === 'context_result') {
-        this.tuco?.onContextResult(event.context)
+        this.saul?.onContextResult(event.context)
       }
     })
 
-    this.tuco = new WalkerCharacter('tuco')
+    this.saul = new WalkerCharacter('saul')
     this.kim = new WalkerCharacter('kim')
 
-    this.tuco.setWorkerHandler((cmd) => this.worker.send(cmd))
+    this.saul.setWorkerHandler((cmd) => this.worker.send(cmd))
     this.kim.setWorkerHandler((cmd) => this.worker.send(cmd))
 
-    this.tuco.win.on('ingest-note' as any, (text: string) => {
+    this.saul.win.on('ingest-note' as any, ((text: string) => {
       const vaultPath = store.get('vaultPath')
       if (vaultPath) {
         this.kim?.showBubble('ingesting...')
@@ -87,9 +87,9 @@ export class AppController {
           vault_path: vaultPath
         })
       }
-    })
+    }) as any)
 
-    this.kim.win.on('ingest-note' as any, (text: string) => {
+    this.kim.win.on('ingest-note' as any, ((text: string) => {
       const vaultPath = store.get('vaultPath')
       if (vaultPath) {
         this.kim?.showBubble('ingesting...')
@@ -100,9 +100,9 @@ export class AppController {
           vault_path: vaultPath
         })
       }
-    })
+    }) as any)
 
-    this.tuco.win.on('ingest-url' as any, (url: string) => {
+    this.saul.win.on('ingest-url' as any, ((url: string) => {
       const vaultPath = store.get('vaultPath')
       if (vaultPath) {
         this.kim?.showBubble('ingesting...')
@@ -113,9 +113,9 @@ export class AppController {
           vault_path: vaultPath
         })
       }
-    })
+    }) as any)
 
-    this.kim.win.on('ingest-url' as any, (url: string) => {
+    this.kim.win.on('ingest-url' as any, ((url: string) => {
       const vaultPath = store.get('vaultPath')
       if (vaultPath) {
         this.kim?.showBubble('ingesting...')
@@ -126,7 +126,7 @@ export class AppController {
           vault_path: vaultPath
         })
       }
-    })
+    }) as any)
 
     this.tray = new AppTray({
       onProviderChange: (char, provider) => this.onProviderChange(char, provider),
@@ -145,8 +145,9 @@ export class AppController {
     this.setupIpc()
 
     this.taskbar.on('change', geometry => {
-      this.tuco?.updateTaskbar(geometry)
+      this.saul?.updateTaskbar(geometry)
       this.kim?.updateTaskbar(geometry)
+      this.updateWalkBoundary()
     })
     this.taskbar.start()
 
@@ -156,9 +157,9 @@ export class AppController {
       const dt = this.lastTickTime === 0 ? 16 : now - this.lastTickTime
       this.lastTickTime = now
       const clampedDt = Math.min(dt, 100)
-      this.tuco?.tick(clampedDt)
+      this.saul?.tick(clampedDt)
       this.kim?.tick(clampedDt)
-      this.tuco?.updateClickState()
+      this.saul?.updateClickState()
       this.kim?.updateClickState()
       this.syncZOrder()
     }
@@ -167,13 +168,13 @@ export class AppController {
     this.tick.start()
 
     if (!app.isPackaged) {
-      this.tuco.win.webContents.openDevTools({ mode: 'detach' })
+      this.saul.win.webContents.openDevTools({ mode: 'detach' })
     }
 
     this.updater.start()
 
     const registered = globalShortcut.register('Ctrl+Shift+Space', () => {
-      const char = this.lastActiveChar === 'tuco' ? this.tuco : this.kim
+      const char = this.lastActiveChar === 'saul' ? this.saul : this.kim
       char?.togglePopover()
     })
     if (!registered) log.warn('Global shortcut Ctrl+Shift+Space could not be registered')
@@ -189,11 +190,11 @@ export class AppController {
       if (char) {
         if (!store.get('hasCompletedOnboarding')) {
           store.set('hasCompletedOnboarding', true)
-          this.tuco?.hideBubble()
+          this.saul?.hideBubble()
           this.kim?.hideBubble()
           log.info('Onboarding complete')
         }
-        this.lastActiveChar = char === this.tuco ? 'tuco' : 'kim'
+        this.lastActiveChar = char === this.saul ? 'saul' : 'kim'
         char.togglePopover()
       }
     })
@@ -222,8 +223,20 @@ export class AppController {
       }
     })
 
+    ipcMain.handle(IPC.SELECT_FILE, async (event) => {
+      const char = this.findCharByPopover(event.sender)
+      if (char) char.setPreventHideOnBlur(true)
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Select file to ingest',
+        properties: ['openFile'],
+      })
+      if (char) char.setPreventHideOnBlur(false)
+      if (canceled) return null
+      return filePaths[0]
+    })
+
     ipcMain.on(IPC.WALKER_INGEST, (event, filePath: string, caption?: string) => {
-      const char = this.findCharByWalker(event.sender)
+      const char = this.findCharByWalker(event.sender) || this.findCharByPopover(event.sender)
       if (char) {
         const vaultPath = store.get('vaultPath')
         if (!vaultPath) {
@@ -250,13 +263,13 @@ export class AppController {
   }
 
   private findCharByWalker(sender: Electron.WebContents): WalkerCharacter | null {
-    if (sender === this.tuco?.win.webContents) return this.tuco
+    if (sender === this.saul?.win.webContents) return this.saul
     if (sender === this.kim?.win.webContents) return this.kim
     return null
   }
 
   private findCharByPopover(sender: Electron.WebContents): WalkerCharacter | null {
-    if (sender === this.tuco?.popover?.webContents) return this.tuco
+    if (sender === this.saul?.popover?.webContents) return this.saul
     if (sender === this.kim?.popover?.webContents) return this.kim
     return null
   }
@@ -285,14 +298,14 @@ export class AppController {
   }
 
   private syncZOrder(): void {
-    if (!this.tuco?.isVisible || !this.kim?.isVisible) return
+    if (!this.saul?.isVisible || !this.kim?.isVisible) return
 
-    const tucoBounds = this.tuco.win.getBounds()
+    const saulBounds = this.saul.win.getBounds()
     const kimBounds = this.kim.win.getBounds()
 
     const overlapping =
-      tucoBounds.x < kimBounds.x + kimBounds.width &&
-      tucoBounds.x + tucoBounds.width > kimBounds.x
+      saulBounds.x < kimBounds.x + kimBounds.width &&
+      saulBounds.x + saulBounds.width > kimBounds.x
 
     if (!overlapping) {
       if (this.lastZOrder !== 'none') this.lastZOrder = 'none'
@@ -300,17 +313,17 @@ export class AppController {
     }
 
     // Right character sits in front of left character
-    const desired: 'tuco-front' | 'kim-front' =
-      tucoBounds.x >= kimBounds.x ? 'tuco-front' : 'kim-front'
+    const desired: 'saul-front' | 'kim-front' =
+      saulBounds.x >= kimBounds.x ? 'saul-front' : 'kim-front'
 
     if (desired === this.lastZOrder) return
     this.lastZOrder = desired
 
-    if (desired === 'tuco-front') {
+    if (desired === 'saul-front') {
       this.kim.win.moveTop()
-      this.tuco.win.moveTop()
+      this.saul.win.moveTop()
     } else {
-      this.tuco.win.moveTop()
+      this.saul.win.moveTop()
       this.kim.win.moveTop()
     }
   }
@@ -318,25 +331,25 @@ export class AppController {
   private onFullscreenChange(isFullscreen: boolean): void {
     if (isFullscreen && !this.hiddenForFullscreen) {
       this.hiddenForFullscreen = true
-      this.tuco?.win.hide()
+      this.saul?.win.hide()
       this.kim?.win.hide()
-      this.tuco?.hidePopover()
+      this.saul?.hidePopover()
       this.kim?.hidePopover()
     } else if (!isFullscreen && this.hiddenForFullscreen) {
       this.hiddenForFullscreen = false
-      if (this.tuco?.isVisible) this.tuco.win.show()
+      if (this.saul?.isVisible) this.saul.win.show()
       if (this.kim?.isVisible) this.kim.win.show()
     }
   }
 
   private onWorkDirChange(char: CharacterName, dir: string): void {
-    const walker = char === 'tuco' ? this.tuco : this.kim
+    const walker = char === 'saul' ? this.saul : this.kim
     walker?.terminateSession()
     log.info(`WorkDir: ${char} → ${dir}`)
   }
 
   private onProviderChange(char: CharacterName, provider: AgentProvider): void {
-    const walker = char === 'tuco' ? this.tuco : this.kim
+    const walker = char === 'saul' ? this.saul : this.kim
     walker?.applyProvider(provider)
 
     if (char === 'kim') {
@@ -350,36 +363,50 @@ export class AppController {
   }
 
   private onVaultModeChange(enabled: boolean): void {
-    // Terminate Tuco's session so it restarts with the new CWD
-    this.tuco?.terminateSession()
+    // Terminate Saul's session so it restarts with the new CWD
+    this.saul?.terminateSession()
     
-    // Clear ALL sessions for Tuco so it doesn't try to resume an obsolete session ID
+    // Clear ALL sessions for Saul so it doesn't try to resume an obsolete session ID
     // either in the default directory or the vault directory.
-    const tucoCfg = store.get('tuco')
-    if (tucoCfg) {
-      store.set('tuco', { ...tucoCfg, sessions: {}, vaultSessions: {} })
+    const saulCfg = store.get('saul')
+    if (saulCfg) {
+      store.set('saul', { ...saulCfg, sessions: {}, vaultSessions: {} })
     }
 
-    this.tuco?.showBubble(enabled ? 'Vault chat' : 'Free chat', 'complete')
-    setTimeout(() => this.tuco?.hideBubble(), 2500)
+    this.saul?.showBubble(enabled ? 'Vault chat' : 'Free chat', 'complete')
+    setTimeout(() => this.saul?.hideBubble(), 2500)
     log.info(`Vault mode → ${enabled}`)
   }
 
   private onSizeChange(char: CharacterName, size: CharacterSize): void {
-    const walker = char === 'tuco' ? this.tuco : this.kim
+    const walker = char === 'saul' ? this.saul : this.kim
     walker?.applySize(size)
   }
 
   private onHide(char: CharacterName): void {
-    const walker = char === 'tuco' ? this.tuco : this.kim
+    const walker = char === 'saul' ? this.saul : this.kim
     walker?.toggleVisibility()
   }
 
   private onThemeChange(theme: ThemeName): void {
     store.set('theme', theme)
-    this.tuco?.applyTheme(theme)
+    this.saul?.applyTheme(theme)
     this.kim?.applyTheme(theme)
     log.info(`Theme → ${theme}`)
+  }
+
+  private updateWalkBoundary(): void {
+    if (!this.saul || !this.kim) return
+    const kimBounds = this.kim.win.getBounds()
+    const saulBounds = this.saul.win.getBounds()
+    const geometry = this.taskbar.geometry
+    if (!geometry) return
+    const { rect } = geometry
+    const gap = 8
+    const maxSaulRight = kimBounds.x - gap
+    const maxOffset = Math.max(1, rect.w - saulBounds.width)
+    const maxProgress = (maxSaulRight - rect.x - saulBounds.width) / maxOffset
+    this.saul.setMaxProgress(maxProgress)
   }
 
   private logDisplayInfo(): void {
@@ -400,9 +427,9 @@ export class AppController {
     this.tick.stop()
     this.taskbar.stop()
     this.tray?.destroy()
-    this.tuco?.destroy()
+    this.saul?.destroy()
     this.kim?.destroy()
-    this.tuco = null
+    this.saul = null
     this.kim = null
   }
 }

@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
 import { EventEmitter } from 'events'
+import { existsSync } from 'fs'
 import log from '../logger'
 
 export interface WorkerEvent {
@@ -12,16 +13,23 @@ export interface WorkerEvent {
 export class WorkerProcess extends EventEmitter {
   private proc: ChildProcess | null = null
   private readonly workerPath: string
-  private readonly pythonBin: string = 'python'
+  private pythonBin: string = 'python'
   private isShuttingDown = false
   private commandQueue: any[] = []
 
   constructor() {
     super()
     this.workerPath = join(app.getAppPath(), 'worker', 'worker.py')
+    
     if (app.isPackaged) {
-        // In production, we'll use the bundled exe
-        this.pythonBin = join(process.resourcesPath, 'worker', 'worker.exe')
+      // In production, we'll use the bundled exe
+      this.pythonBin = join(process.resourcesPath, 'worker', 'worker.exe')
+    } else {
+      // In development, try to use the virtual environment if it exists
+      const venvPython = join(app.getAppPath(), 'worker', '.venv', 'Scripts', 'python.exe')
+      if (existsSync(venvPython)) {
+        this.pythonBin = venvPython
+      }
     }
   }
 
@@ -31,7 +39,7 @@ export class WorkerProcess extends EventEmitter {
     log.info(`Starting worker: ${this.pythonBin} ${this.workerPath}`)
     
     const spawnArgs = app.isPackaged ? [] : [this.workerPath]
-    const spawnBin = app.isPackaged ? this.pythonBin : 'python'
+    const spawnBin = this.pythonBin
 
     this.proc = spawn(spawnBin, spawnArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],

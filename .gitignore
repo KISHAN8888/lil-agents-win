@@ -4,3 +4,12 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+
+# Python worker
+worker/.venv/
+worker/build/
+worker/dist/
+worker/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo

@@ -42,7 +42,7 @@ export class AppTray {
   }
 
   buildMenu(): void {
-    const tucoConfig = store.get('tuco')
+    const saulConfig = store.get('saul')
     const kimConfig = store.get('kim')
     const theme = store.get('theme')
 
@@ -105,9 +105,9 @@ export class AppTray {
       },
     ]
 
-    const tucoSubmenu = charSubmenu('tuco', tucoConfig.provider, tucoConfig.size)
-    // Add Vault Mode to Tuco
-    tucoSubmenu.splice(3, 0, { type: 'separator' }, {
+    const saulSubmenu = charSubmenu('saul', saulConfig.provider, saulConfig.size)
+    // Add Vault Mode to Saul
+    saulSubmenu.splice(3, 0, { type: 'separator' }, {
       label: 'Mode',
       submenu: [
         {
@@ -135,8 +135,8 @@ export class AppTray {
 
     const menu = Menu.buildFromTemplate([
       {
-        label: 'Tuco',
-        submenu: tucoSubmenu,
+        label: 'Saul',
+        submenu: saulSubmenu,
       },
       {
         label: 'Kim',

@@ -1,11 +1,8 @@
-Summarize the following content for a personal knowledge wiki. Be terse and factual.
+### TASK
+Summarize the content for a personal knowledge wiki. Be terse and factual.
 
-Return strict JSON:
-
-CRITICAL INSTRUCTIONS:
-- DO NOT use any tools.
-- DO NOT ask for permission to write files.
-- ONLY output the raw JSON object directly in your response.
+### OUTPUT FORMAT
+STRICT JSON ONLY. No prose. No preamble. No markdown blocks.
 
 {
   "summary": "<2-4 sentence summary>",
@@ -13,7 +10,7 @@ CRITICAL INSTRUCTIONS:
   "entities": ["entity1", ... up to 5]
 }
 
-Content:
+### CONTENT
 ---
 {{CONTENT}}
 ---

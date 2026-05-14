@@ -7,9 +7,11 @@ interface Props {
   onCopy: () => void
   onClear: () => void
   onClose: () => void
+  onSelectFile: () => void
+  pendingFile: string | null
 }
 
-export function InputBar({ onSubmit, onCopy, onClear, onClose }: Props) {
+export function InputBar({ onSubmit, onCopy, onClear, onClose, onSelectFile, pendingFile }: Props) {
   const [value, setValue] = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -74,16 +76,26 @@ export function InputBar({ onSubmit, onCopy, onClear, onClose }: Props) {
           ))}
         </div>
       )}
-      <input
-        ref={inputRef}
-        className="input-field"
-        value={value}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder="message…"
-        spellCheck={false}
-        autoComplete="off"
-      />
+      <div className="input-wrapper">
+        <button 
+          className="file-button" 
+          onClick={onSelectFile}
+          title="Ingest file"
+          type="button"
+        >
+          📁
+        </button>
+        <input
+          ref={inputRef}
+          className="input-field"
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder={pendingFile ? `Caption for ${pendingFile.split(/[\\/]/).pop()}…` : "message…"}
+          spellCheck={false}
+          autoComplete="off"
+        />
+      </div>
     </div>
   )
 }

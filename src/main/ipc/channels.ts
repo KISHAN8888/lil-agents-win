@@ -1,4 +1,7 @@
 export const IPC = {
+  // General
+  SELECT_FILE: 'app:selectFile',
+
   // Walker → Main
   WALKER_CLICKABLE: 'walker:clickable',
   WALKER_CLICK: 'walker:click',

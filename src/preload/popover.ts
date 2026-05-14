@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('popoverAPI', {
   close: () => ipcRenderer.send(IPC.POPOVER_CLOSE),
   copyLast: () => ipcRenderer.send(IPC.POPOVER_COPY_LAST),
   setTheme: (theme: ThemeName) => ipcRenderer.send(IPC.THEME_SET, theme),
+  selectFile: () => ipcRenderer.invoke(IPC.SELECT_FILE),
+  ingest: (path: string, caption?: string) => ipcRenderer.send(IPC.WALKER_INGEST, path, caption),
 
   onText: (cb: (chunk: string) => void) => { _onText = cb },
   onToolUse: (cb: (name: string, input: unknown) => void) => { _onToolUse = cb },

@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process'
 import { homedir } from 'os'
 import { BaseSession } from './AgentSession'
-import { findBinary, needsShell } from '../platform/environment'
+import { findBinary } from '../platform/environment'
 import log from '../logger'
 
 const GEMINI_ARGS = [

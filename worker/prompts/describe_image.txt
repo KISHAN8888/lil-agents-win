@@ -1,0 +1,12 @@
+Read the image file at {{IMAGE_PATH}} and provide a detailed description for a personal knowledge base.
+
+Include everything that applies:
+- Main subjects: people, objects, animals, scenes, UI elements
+- All visible text (read it exactly, including labels, captions, code, messages)
+- Visual style: photograph, screenshot, diagram, artwork, meme, receipt, document scan, etc.
+- Colors, layout, composition, and setting
+- Any context clues about the image's purpose or origin
+
+{{CAPTION}}
+
+Write only the description. No preamble, no "The image shows..." opener — start directly with the content.

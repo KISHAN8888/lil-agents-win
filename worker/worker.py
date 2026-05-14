@@ -134,7 +134,7 @@ def init_ingest(cmd_msg: Dict[str, Any]) -> None:
                 send_event("task_failed", error=f"File not found: {path}")
                 return
             ext = src_path.suffix.lower()
-            
+
             # Phase 2: Extract
             if ext == ".pdf":
                 reader = PdfReader(src_path)
@@ -144,6 +144,19 @@ def init_ingest(cmd_msg: Dict[str, Any]) -> None:
                 content = "\n".join([para.text for para in doc.paragraphs])
             elif ext in [".txt", ".md"]:
                 content = src_path.read_text(encoding="utf-8", errors="replace")
+            elif ext in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"]:
+                tmp_image = root / ".sage" / f"tmp_{uuid.uuid4()}{ext}"
+                shutil.copy2(src_path, tmp_image)
+                try:
+                    image_prompt = get_prompt("describe_image",
+                        IMAGE_PATH=str(tmp_image),
+                        CAPTION=f"User note: {caption}" if caption else "")
+                    content = call_llm(provider, image_prompt, timeout=90, cwd=str(root)) or ""
+                finally:
+                    tmp_image.unlink(missing_ok=True)
+                if not content:
+                    send_event("task_failed", error="LLM could not describe image")
+                    return
             else:
                 send_event("task_failed", error=f"Unsupported file type: {ext}")
                 return
@@ -481,6 +494,27 @@ def init_vault(vault_path: str, provider: str = "claude") -> None:
         if not config_path.exists():
             config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(config_path, "w") as f: yaml.dump({"llm_provider": provider}, f)
+
+        # Grant Claude read-all permission for the vault so it never prompts
+        claude_settings_dir = root / ".claude"
+        claude_settings_dir.mkdir(parents=True, exist_ok=True)
+        claude_settings = claude_settings_dir / "settings.json"
+        if not claude_settings.exists():
+            claude_settings.write_text(
+                json.dumps({"permissions": {"allow": ["Read(**/*)"]}}, indent=2),
+                encoding="utf-8"
+            )
+
+        # Grant Gemini workspace trust for the vault
+        gemini_settings_dir = root / ".gemini"
+        gemini_settings_dir.mkdir(parents=True, exist_ok=True)
+        gemini_settings = gemini_settings_dir / "settings.json"
+        if not gemini_settings.exists():
+            gemini_settings.write_text(
+                json.dumps({"trust": True}, indent=2),
+                encoding="utf-8"
+            )
+
         update_index(root)
         send_event("log", level="info", message=f"Vault initialized at {vault_path}")
     except Exception as e:

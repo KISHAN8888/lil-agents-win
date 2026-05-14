@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 
 const VIDEO_MAP: Record<string, string> = {
-  tuco: 'asset://Walking monkey.webm',
-  kim: 'asset://walk.webm',
+  saul: 'asset://Walking monkey.webm',
+  kim: 'asset://Loader cat.webm',
 }
 
 const FALLBACK_MAP: Record<string, string> = {
-  tuco: 'asset://Walking monkey.webm',
-  kim: 'asset://walk.webm',
+  saul: 'asset://Walking monkey.webm',
+  kim: 'asset://Loader cat.webm',
 }
 
 function getCharacter(): string {
-  return new URLSearchParams(location.search).get('char') ?? 'tuco'
+  return new URLSearchParams(location.search).get('char') ?? 'saul'
 }
 
 type WalkerAPI = {
@@ -39,14 +39,14 @@ export default function WalkerView() {
   const inputRef = useRef<HTMLInputElement>(null)
   const walkingRef = useRef(false)
   const char = getCharacter()
-  const videoSrc = VIDEO_MAP[char] ?? VIDEO_MAP.tuco
-  const fallbackSrc = FALLBACK_MAP[char] ?? FALLBACK_MAP.tuco
+  const videoSrc = VIDEO_MAP[char] ?? VIDEO_MAP.saul
+  const fallbackSrc = FALLBACK_MAP[char] ?? FALLBACK_MAP.saul
 
   useEffect(() => {
     const api = (window as Window & { walkerAPI?: WalkerAPI }).walkerAPI
     if (ingestTarget) {
-      inputRef.current?.focus()
       api?.setModalOpen(true)
+      setTimeout(() => inputRef.current?.focus(), 100)
     } else {
       api?.setModalOpen(false)
     }

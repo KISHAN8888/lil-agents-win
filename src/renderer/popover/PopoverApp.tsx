@@ -7,7 +7,7 @@ import { InputBar } from './InputBar'
 function getParams() {
   const p = new URLSearchParams(location.search)
   return {
-    char: p.get('char') ?? 'tuco',
+    char: p.get('char') ?? 'saul',
     provider: p.get('provider') ?? 'claude',
     theme: p.get('theme') ?? 'midnight',
   }
@@ -16,6 +16,8 @@ function getParams() {
 type PopoverAPI = {
   signalReady: () => void
   sendMessage: (text: string) => void
+  ingest: (path: string, caption?: string) => void
+  selectFile: () => Promise<string | null>
   close: () => void
   copyLast: () => void
   onText: (cb: (chunk: string) => void) => void
@@ -48,7 +50,16 @@ export default function PopoverApp() {
   const lastResponseRef = useRef('')
   const currentChunkRef = useRef('')
 
+  const [pendingFile, setPendingFile] = useState<string | null>(null)
+
   const closePopover = () => getAPI()?.close()
+
+  const handleSelectFile = async () => {
+    const path = await getAPI()?.selectFile()
+    if (path) {
+      setPendingFile(path)
+    }
+  }
 
   const handleCopy = () => {
     const text = lastResponseRef.current
@@ -73,6 +84,15 @@ export default function PopoverApp() {
       )
       return
     }
+
+    if (pendingFile) {
+      getAPI()?.ingest(pendingFile, text)
+      termRef.current?.write(`\r\n\x1b[32mIngesting file:\x1b[0m ${pendingFile}\r\n`)
+      if (text) termRef.current?.write(`\x1b[2mCaption:\x1b[0m ${text}\r\n`)
+      setPendingFile(null)
+      return
+    }
+
     currentChunkRef.current = ''
     termRef.current?.write(`\r\n\x1b[36m>\x1b[0m ${text}\r\n`)
     getAPI()?.sendMessage(text)
@@ -151,6 +171,8 @@ export default function PopoverApp() {
         onCopy={handleCopy}
         onClear={() => termRef.current?.clear()}
         onClose={closePopover}
+        onSelectFile={handleSelectFile}
+        pendingFile={pendingFile}
       />
     </div>
   )
